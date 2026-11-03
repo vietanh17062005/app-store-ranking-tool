@@ -1,0 +1,30 @@
+{
+  "name": "app-store-ranking-tool",
+  "version": "1.0.14",
+  "description": "Track Google Play and Apple App Store keyword search rankings by country",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "sync:apps": "node src/scripts/sync-apps.js",
+    "run:rankings": "node src/scripts/run-rankings.js",
+    "db:init": "node src/scripts/init-db.js",
+    "browser:install": "playwright install chromium",
+    "db:seed": "node src/scripts/seed-db.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "axios": "^1.8.4",
+    "basic-auth": "^2.0.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mysql2": "^3.14.0",
+    "node-cron": "^3.0.3",
+    "google-play-scraper": "^10.1.2",
+    "app-store-scraper": "^0.18.0",
+    "playwright": "^1.55.0"
+  }
+}

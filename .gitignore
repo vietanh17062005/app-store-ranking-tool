@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+node_modules/
+npm-debug.log*
+
+certs/
+cms-response.json
+google-play-debug.json
+database/xep_hang_app.sql
+
+playwright/.cache/
+playwright-report/
+test-results/

@@ -4,7 +4,7 @@ Tool Node.js lấy thứ hạng ứng dụng theo từ khóa trên Google Play v
 
 ## Giải pháp và cách hiểu “ranking”
 
-- **Google Play:** `google-play-scraper` tìm theo từ khóa, quốc gia và ngôn ngữ. Hạng là vị trí 1-based của package ID trong danh sách kết quả thư viện trả về.
+- **Google Play:** browser mở trang tìm kiếm theo quốc gia/ngôn ngữ đã chọn và chỉ ghi hạng khi IP đầu ra được xác minh đúng quốc gia. Hạng là vị trí 1-based của package ID trong thứ tự DOM đọc được.
 - **Apple App Store – tìm kiếm từ khóa:** mặc định dùng `app-store-scraper`, vì `fitomad/App-Store-Ranking` không tìm kiếm theo từ khóa.
 - **Apple App Store – hạng danh mục (tùy chọn):** có thể bật adapter cho `fitomad/App-Store-Ranking`. Script upstream chỉ trả hạng chart theo danh mục (top-free/top-paid/top-grossing); adapter này ghi nhận **top-free**. Đây là chỉ số khác với hạng tìm kiếm theo từ khóa.
 - **Lưu trữ/API:** MySQL/MariaDB, có lịch sử theo ứng dụng, Store, quốc gia, từ khóa và thời điểm. Dashboard hiển thị hạng tìm thấy hoặc trạng thái không tìm thấy/lỗi.
@@ -15,11 +15,11 @@ Tool Node.js lấy thứ hạng ứng dụng theo từ khóa trên Google Play v
 
 | Lựa chọn | Ưu điểm | Hạn chế |
 |---|---|---|
-| Scraper thư viện (`google-play-scraper`, `app-store-scraper`) | Không cần API key trả phí; tích hợp trực tiếp với lịch chạy và lưu DB; có thể lấy vị trí theo từ khóa | Không phải API chính thức; có thể bị chặn/giới hạn; dữ liệu, thứ tự và độ sâu phụ thuộc phản hồi Store |
+| Scraper thư viện (`app-store-scraper`) | Không cần API key trả phí; tích hợp trực tiếp với lịch chạy và lưu DB | Không phải API chính thức; có thể bị chặn/giới hạn; dữ liệu, thứ tự và độ sâu phụ thuộc phản hồi Store |
 | `fitomad/App-Store-Ranking` | Lấy chart App Store theo quốc gia/danh mục; mã nguồn Python mở | Chỉ là hạng chart, không tìm theo từ khóa; upstream quét danh sách quốc gia và ba chart, có thể chạy lâu; cần Python và checkout riêng |
 | Crawl giao diện | Có thể quan sát giao diện tìm kiếm công khai | DOM thay đổi, khó ổn định và có thể bị CAPTCHA; không đảm bảo giống kết quả từng người dùng |
 
-Mặc định Google Play chạy qua `google-play-scraper` (`RANKING_GOOGLE_PLAY_SOURCE=scraper`). Tham số quốc gia/ngôn ngữ chọn storefront yêu cầu nhưng không đổi IP của máy. Nếu cần mô phỏng IP ở quốc gia cụ thể, cần mạng/VPN/proxy đáng tin cậy; không coi `gl` là bằng chứng IP đã ở đúng quốc gia.
+Google Play chỉ được truy vấn qua browser (`RANKING_GOOGLE_PLAY_SOURCE=browser`) để xác minh IP đầu ra. `gl`/`hl` chọn storefront/ngôn ngữ nhưng không định tuyến IP; tool dừng và không ghi hạng nếu IP không thuộc quốc gia đang chọn hoặc không xác minh được. Nguồn `google-play-scraper` không xác minh được IP nên không được dùng cho ranking này. Để kiểm tra USA từ máy có IP Việt Nam, cần route VPN/proxy thực sự thoát ra ở USA; chỉ thay `gl=us` không đủ. Kết quả web vẫn có thể khác Play Store trên điện thoại do tài khoản, cá nhân hóa và khác biệt giao diện.
 
 ## Cài đặt và chạy
 
@@ -45,7 +45,7 @@ Yêu cầu Node.js 20+ và MySQL/MariaDB.
    TIMEZONE=Asia/Ho_Chi_Minh
    CRON_SCHEDULE=0 8 * * *
    RANKING_DEPTH=200
-   RANKING_GOOGLE_PLAY_SOURCE=scraper
+   RANKING_GOOGLE_PLAY_SOURCE=browser
    APPLE_RANKING_MODE=keyword
    ```
 
