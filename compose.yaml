@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: app-store-ranking-tool
     restart: unless-stopped
     env_file:
       - .env
@@ -11,9 +10,9 @@ services:
       NODE_ENV: production
       PORT: 3000
       # Browser runs inside Docker; it cannot open a desktop window on Windows.
-      RANKING_BROWSER: chrome
+      RANKING_BROWSER: chromium
       RANKING_BROWSER_HEADLESS: "true"
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     init: true
     shm_size: "1gb"

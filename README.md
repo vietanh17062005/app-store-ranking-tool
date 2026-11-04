@@ -21,54 +21,33 @@ Tool Node.js lấy thứ hạng ứng dụng theo từ khóa trên Google Play v
 
 Google Play chỉ được truy vấn qua browser (`RANKING_GOOGLE_PLAY_SOURCE=browser`) để xác minh IP đầu ra. `gl`/`hl` chọn storefront/ngôn ngữ nhưng không định tuyến IP; tool dừng và không ghi hạng nếu IP không thuộc quốc gia đang chọn hoặc không xác minh được. Nguồn `google-play-scraper` không xác minh được IP nên không được dùng cho ranking này. Để kiểm tra USA từ máy có IP Việt Nam, cần route VPN/proxy thực sự thoát ra ở USA; chỉ thay `gl=us` không đủ. Kết quả web vẫn có thể khác Play Store trên điện thoại do tài khoản, cá nhân hóa và khác biệt giao diện.
 
-## Cài đặt và chạy
+## Cài đặt và chạy bằng Docker
 
-Yêu cầu Node.js 20+ và MySQL/MariaDB.
+Ứng dụng chạy trực tiếp trong container từ lệnh `node src/server.js`; không cần chạy `npm start` trên máy host. Cần có Docker Compose và một MySQL/MariaDB hoặc TiDB có thể truy cập từ container.
 
-1. Cài dependency:
+1. Tạo `.env` từ `.env.example` và điền thông tin DB. Khi chạy Docker trên máy cá nhân, nếu DB nằm trên máy host, đặt `DB_HOST=host.docker.internal`; khi deploy Coolify, dùng hostname DB mà container có thể truy cập.
+2. Khởi tạo schema một lần:
 
-   ```powershell
-   npm ci
+   ```sh
+   docker compose -f compose.yaml -f compose.local.yaml run --rm app node src/scripts/init-db.js
    ```
 
-2. Tạo `.env` từ `.env.example` nếu chưa có, rồi điền cấu hình DB. Các giá trị chính:
+3. Chạy ứng dụng:
 
-   ```env
-   DB_HOST=127.0.0.1
-   DB_PORT=3306
-   DB_NAME=xep_hang_app
-   DB_USER=root
-   DB_PASSWORD=
-   DB_SSL=false
-   CMS_APPS_URL=https://cms-api.abc-elearning.org/api/app/config/summary
-   COUNTRIES=VN,US,CA,AU,GB,IN,MY
-   TIMEZONE=Asia/Ho_Chi_Minh
-   CRON_SCHEDULE=0 8 * * *
-   RANKING_DEPTH=200
-   RANKING_GOOGLE_PLAY_SOURCE=browser
-   APPLE_RANKING_MODE=keyword
+   ```sh
+   docker compose -f compose.yaml -f compose.local.yaml up -d --build
    ```
 
-3. Khởi tạo schema:
+   Mở `http://localhost:3000`. Xem log bằng `docker compose -f compose.yaml -f compose.local.yaml logs -f app`.
 
-   ```powershell
-   npm run db:init
+4. Đồng bộ app từ CMS hoặc chạy ranking thủ công khi cần:
+
+   ```sh
+   docker compose -f compose.yaml -f compose.local.yaml exec app node src/scripts/sync-apps.js
+   docker compose -f compose.yaml -f compose.local.yaml exec app node src/scripts/run-rankings.js
    ```
 
-4. Đồng bộ app từ CMS và khởi động API/dashboard:
-
-   ```powershell
-   npm run sync:apps
-   npm start
-   ```
-
-   Mở `http://localhost:3000`. Có thể chạy thủ công một batch bằng:
-
-   ```powershell
-   npm run run:rankings
-   ```
-
-Lịch mặc định là **08:00 mỗi ngày theo `TIMEZONE`**. Tiến trình `npm start` cần chạy liên tục để lịch hoạt động. Lịch được quản lý trong bộ nhớ của tiến trình; khi chạy nhiều instance cần chỉ bật scheduler ở một instance.
+Lịch ranking mặc định chạy lúc **08:00 mỗi ngày theo `TIMEZONE`** khi container hoạt động. Chỉ chạy một instance có scheduler để tránh chạy trùng.
 
 ## Cấu hình quốc gia
 
@@ -142,6 +121,20 @@ GET /api/rankings?app_id=1&latest=1
 - Không commit `.env` hoặc chia sẻ thông tin kết nối DB.
 # app-store-ranking-tool
 
+## Deploy bằng Docker Compose trên Coolify
+
+1. Push mã nguồn và các thay đổi lên GitHub; **không push `.env`**.
+2. Trong Coolify, tạo resource từ Git repository, chọn branch cần deploy và kiểu **Docker Compose**. Chọn file `compose.yaml` — không chọn `compose.local.yaml`.
+3. Thêm biến môi trường trong Coolify theo `.env.example`, đặc biệt `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` và `DB_SSL`. `DB_HOST` phải là địa chỉ DB truy cập được từ container, không dùng `127.0.0.1` cho DB bên ngoài container.
+4. Cấu hình domain cho service `app` với container port `3000`, rồi deploy. Compose chỉ expose port nội bộ để Coolify proxy định tuyến và hỗ trợ rolling update.
+5. Nếu schema chưa được khởi tạo, mở terminal của container trong Coolify và chạy:
+
+   ```sh
+   node src/scripts/init-db.js
+   ```
+
+Docker image chứa ứng dụng, Node dependencies và Chromium chạy headless. Entrypoint chạy Node trực tiếp, không gọi `npm start`. Không chạy `npm run db:seed` trên database đang dùng: script seed xóa các bảng trước khi import.
+
 ## Chạy bằng Docker (Windows)
 
 ### 1. Chuẩn bị
@@ -164,8 +157,8 @@ Mở `.env` và cấu hình tối thiểu:
 ### 2. Build và khởi tạo database
 
 ```powershell
-docker compose build
-docker compose run --rm app npm run db:init
+docker compose -f compose.yaml -f compose.local.yaml build
+docker compose -f compose.yaml -f compose.local.yaml run --rm app node src/scripts/init-db.js
 ```
 
 Lệnh trên khởi tạo schema trên database đã cấu hình; không tự chuyển dữ liệu cũ.
@@ -173,8 +166,8 @@ Lệnh trên khởi tạo schema trên database đã cấu hình; không tự ch
 ### 3. Chạy ứng dụng
 
 ```powershell
-docker compose up -d
-docker compose logs -f app
+docker compose -f compose.yaml -f compose.local.yaml up -d
+docker compose -f compose.yaml -f compose.local.yaml logs -f app
 ```
 
 Mở giao diện tại http://localhost:3000. API được bảo vệ bằng Bearer token. Ví dụ:
@@ -187,15 +180,15 @@ Invoke-RestMethod -Uri "http://localhost:3000/health" -Headers $headers
 ### 4. Đồng bộ ứng dụng và chạy ranking
 
 ```powershell
-docker compose exec app npm run sync:apps
-docker compose exec app npm run run:rankings
+docker compose -f compose.yaml -f compose.local.yaml exec app node src/scripts/sync-apps.js
+docker compose -f compose.yaml -f compose.local.yaml exec app node src/scripts/run-rankings.js
 ```
 
-Xem log: `docker compose logs -f app`  
-Dừng: `docker compose down`
+Xem log: `docker compose -f compose.yaml -f compose.local.yaml logs -f app`
+Dừng: `docker compose -f compose.yaml -f compose.local.yaml down`
 
 ### Ghi chú về trình duyệt trong Docker
 
-Docker chạy Chromium ở chế độ headless bên trong container để thu thập dữ liệu. Nó **không mở cửa sổ Edge/Chrome trên desktop Windows**. Muốn nhìn thấy cửa sổ trình duyệt để debug, chạy project trực tiếp trên Windows bằng `npm run dev` và cấu hình `RANKING_BROWSER=msedge`, `RANKING_BROWSER_HEADLESS=false` trong `.env`.
+Docker chạy Chromium ở chế độ headless bên trong container để thu thập dữ liệu; nó không mở cửa sổ trình duyệt trên desktop.
 
 Compose này kết nối tới database được khai báo trong `.env` (ví dụ TiDB Cloud); không tạo thêm MySQL container và không chứa thông tin đăng nhập database.
