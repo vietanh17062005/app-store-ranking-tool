@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+node_modules
+npm-debug.log*
+playwright/.cache
+playwright-report
+test-results
+.DS_Store

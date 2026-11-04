@@ -416,7 +416,7 @@ async function searchGooglePlay(keyword, countryCode, depth, marketOverride = nu
         taskId: null,
         items: items.map((item, index) => ({
           appId: item.appId, title: item.title, url: item.url, rank: index + 1,
-          // Preserve parser evidence so /api/store/search can return real diagnostics.
+          // Preserve parser evidence for ranking result diagnostics.
           documentTop: item.documentTop, documentLeft: item.documentLeft,
           linkTop: item.linkTop, linkLeft: item.linkLeft,
           cardText: item.cardText, linkWidth: item.linkWidth, linkHeight: item.linkHeight,

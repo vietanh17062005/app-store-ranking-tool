@@ -1,42 +1,462 @@
 <!doctype html>
-<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>App Store Ranking Tool</title>
-<style>
-:root{font-family:Inter,Segoe UI,Arial,sans-serif;color:#182230;background:#f4f7fb}*{box-sizing:border-box}body{margin:0}.top{background:#101828;color:#fff;padding:24px max(20px,calc((100vw - 1200px)/2))}.top h1{font-size:24px;margin:0 0 6px}.top p{margin:0;color:#cbd5e1}.wrap{max-width:1200px;margin:22px auto;padding:0 18px}.panel{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 3px 14px #10182808}.panel h2{font-size:17px;margin:0 0 14px}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.field label{display:block;font-size:12px;color:#475467;margin-bottom:6px}.field input,.field select{width:100%;padding:10px;border:1px solid #cfd8e3;border-radius:8px;font:inherit;background:#fff}.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}button{border:0;border-radius:8px;padding:10px 15px;background:#175cd3;color:#fff;font-weight:600;cursor:pointer}button.secondary{background:#eef4ff;color:#1849a9}button:disabled{opacity:.55;cursor:wait}.note{font-size:13px;color:#667085}.status{padding:10px 12px;background:#f2f4f7;border-radius:8px;margin-top:12px;font-size:13px;white-space:pre-wrap}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.metric{border:1px solid #eaecf0;border-radius:10px;padding:14px}.metric .v{font-size:24px;font-weight:700;margin-top:5px}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:1250px;font-size:13px}th,td{text-align:left;padding:10px 9px;border-bottom:1px solid #eaecf0;vertical-align:top}th{background:#f9fafb;color:#475467;white-space:nowrap}td a{color:#175cd3}.nowrap{white-space:nowrap}.detail-cell{min-width:280px;max-width:480px;overflow-wrap:anywhere}.pill{display:inline-block;border-radius:999px;padding:4px 8px;background:#f2f4f7;font-size:12px}.found{background:#dcfae6;color:#067647}.not_found,.invalid_app_id{background:#fef0c7;color:#93370d}.provider_error{background:#fee4e2;color:#b42318}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.hidden{display:none}.advanced{padding:0}.advanced summary{cursor:pointer;list-style:none;font-weight:650;font-size:14px;padding:14px 18px}.advanced summary::-webkit-details-marker{display:none}.advanced summary:after{content:"+";float:right;color:#667085}.advanced[open] summary:after{content:"−"}.advanced[open]{padding-bottom:18px}.advanced[open]>.grid,.advanced[open]>.actions,.advanced[open]>.status{margin-left:18px;margin-right:18px}@media(max-width:800px){.grid,.cards{grid-template-columns:repeat(2,1fr)}}@media(max-width:500px){.grid,.cards{grid-template-columns:1fr}.top h1{font-size:20px}}
-</style></head><body>
-<header class="top"><h1>App Store Ranking Tool</h1><p>Theo dõi thứ hạng tìm kiếm ứng dụng trên Google Play và Apple App Store</p></header>
-<main class="wrap">
-<details class="panel advanced"><summary>Cài đặt nâng cao <span class="note">Kiểm tra trình duyệt</span></summary><div class="grid" style="margin-top:14px"><input id="browser" type="hidden" value="chrome"></div><div class="actions"><button id="testBrowser" class="secondary">Mở thử Google Chrome</button><span class="note">API chạy nội bộ không yêu cầu nhập token.</span></div><div id="connection" class="status">Chưa kiểm tra kết nối.</div></details>
-<section class="panel"><h2>2. Chạy kiểm tra ranking</h2><p class="note">Chọn một ứng dụng theo tên; công cụ chỉ kiểm tra ứng dụng đang chọn. Chọn quốc gia và Store rồi bấm “Chạy kiểm tra”.</p><div class="grid"><div class="field"><label>Ứng dụng</label><select id="appSelect"><option value="">Đang tải danh sách ứng dụng…</option></select><div class="note" id="appMeta" style="margin-top:5px">Chọn một ứng dụng trong danh sách.</div></div><div class="field"><label>Quốc gia</label><select id="countries"><option value="">Đang tải quốc gia…</option></select></div><div class="field"><label>Nền tảng</label><select id="platform"><option value="google_play">Google Play</option><option value="app_store">Apple App Store</option></select></div><div class="field"><label>Từ khóa tìm kiếm (không bắt buộc)</label><input id="keywordInput" type="text" maxlength="200" placeholder="Ví dụ: cna"><div class="note">Nhập từ khóa bất kỳ, không cần có trong danh sách app.</div></div></div><div class="actions"><button id="run">Chạy kiểm tra app đã chọn</button><button id="searchKeyword" class="secondary">Tìm ứng dụng theo từ khóa</button><button id="loadResults" class="secondary">Xem kết quả mới nhất</button><span class="note">Google Play mặc định dùng google-play-scraper; có thể chọn browser trong cấu hình môi trường.</span></div><div id="runStatus" class="status">Chưa chạy.</div></section>
-<section class="panel"><div class="toolbar"><h2 style="margin:0">Kết quả tìm kiếm trên Store</h2><span class="note" id="searchSummary">Nhập từ khóa rồi bấm “Tìm ứng dụng theo từ khóa”.</span></div><div class="tablewrap" style="margin-top:12px"><table style="min-width:650px"><thead><tr><th>Hạng</th><th>Tên ứng dụng trên Store</th><th>ID Store</th><th>Liên kết</th></tr></thead><tbody id="storeSearchRows"><tr><td colspan="4">Chưa tìm kiếm.</td></tr></tbody></table></div><div id="storeSearchStatus" class="status">Tìm kiếm này có thể dùng từ khóa bất kỳ; không cần chọn app trong danh sách CMS.</div></section>
-<section class="panel"><h2>3. Tổng quan kết quả</h2><div class="cards"><div class="metric"><div class="note">Tổng bản ghi</div><div class="v" id="mTotal">—</div></div><div class="metric"><div class="note">Tìm thấy ranking</div><div class="v" id="mFound">—</div></div><div class="metric"><div class="note">Không tìm thấy trong kết quả trả về</div><div class="v" id="mMissing">—</div></div><div class="metric"><div class="note">Lỗi provider</div><div class="v" id="mErrors">—</div></div></div></section>
-<section class="panel"><div class="toolbar"><h2 style="margin:0">4. Kết quả ranking lưu trong database</h2><div class="actions" style="margin:0"><span class="note" id="updated">Chưa tải dữ liệu</span><button id="refresh" class="secondary">Tải lại dữ liệu</button></div></div><div class="actions" style="margin-top:12px"><label style="display:flex;gap:8px;align-items:center;font-size:13px;color:#475467"><input id="latestOnly" type="checkbox" checked style="width:auto"> Chỉ hiện kết quả mới nhất cho mỗi ứng dụng / nền tảng / quốc gia / từ khóa</label><span class="note">Bỏ chọn để xem lịch sử. Dữ liệu demo được ẩn mặc định.</span><label style="display:flex;gap:8px;align-items:center;font-size:13px;color:#475467"><input id="showDemo" type="checkbox" style="width:auto"> Hiện dữ liệu demo (không phải thứ hạng thật)</label></div><div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Thời gian kiểm tra</th><th>Ứng dụng</th><th>Nền tảng</th><th>Quốc gia</th><th>IP đang kiểm tra</th><th>Từ khóa</th><th>Hạng tìm kiếm</th><th>Số kết quả đã kiểm tra</th><th>Trạng thái</th><th>Store URL / Thông báo</th></tr></thead><tbody id="rows"><tr><td colspan="9">Chưa có dữ liệu.</td></tr></tbody></table></div></section>
-</main><script>
-const $=id=>document.getElementById(id);
-function headers(){return {'Content-Type':'application/json'}}
-function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-async function api(url,opts={}){const r=await fetch(url,{...opts,headers:{...headers(),...(opts.headers||{})}});const txt=await r.text();let data;try{data=JSON.parse(txt)}catch{data={message:txt}}if(!r.ok)throw new Error(data.message||data.error||('HTTP '+r.status));return data}
-async function checkHealth(){try{const d=await api('/health');$('connection').textContent='API: '+d.status+' | Database: '+d.database;$('connection').style.background='#ecfdf3';}catch(e){$('connection').textContent='Không kết nối được: '+e.message+'\nKiểm tra MySQL XAMPP và chạy server bằng npm start.';$('connection').style.background='#fef3f2'}}
-async function loadResults(){try{const latest=$('latestOnly')?.checked?'&latest=1':'';const country=encodeURIComponent($('countries').value);const platform=encodeURIComponent($('platform').value);const id=Number($('appSelect').value);if(!Number.isInteger(id)||id<1){$('rows').innerHTML='<tr><td colspan="10">Hãy chọn ứng dụng để xem kết quả.</td></tr>';$('mTotal').textContent=$('mFound').textContent=$('mMissing').textContent=$('mErrors').textContent='—';$('updated').textContent='Chưa chọn ứng dụng';return}const ids=[id];const appFilter='&app_id='+encodeURIComponent(id);const demoFilter=$('showDemo')?.checked?'':'&exclude_demo=1';const d=await api('/api/rankings?limit=50&country='+country+'&platform='+platform+latest+appFilter+demoFilter);const rows=d.data||[];$('mTotal').textContent=rows.length;$('mFound').textContent=rows.filter(x=>x.status==='found').length;$('mMissing').textContent=rows.filter(x=>x.status==='not_found').length;$('mErrors').textContent=rows.filter(x=>x.status==='provider_error'||x.status==='provider_not_configured').length;const statusLabels={found:'Đã tìm thấy',not_found:'Không tìm thấy trong phạm vi đã đọc',provider_error:'Lỗi truy vấn',provider_not_configured:'Chưa bật provider',invalid_app_id:'Thiếu ID Store'};$('rows').innerHTML=rows.map(x=>{const isDemo=String(x.provider||'').toLowerCase()==='demo';const statusText=(isDemo?'DEMO · ':'STORE · ')+(statusLabels[x.status]||x.status||'—');const detail=x.store_url?`<a href="${esc(x.store_url)}" target="_blank" rel="noopener">Mở Store</a>`:esc(x.error_message||'—');return `<tr><td class="nowrap">${esc(x.checked_at)}</td><td><b>${esc(x.app_name)}</b></td><td class="nowrap">${esc(x.platform)}</td><td class="nowrap">${esc(x.country_code)}</td><td class="nowrap">${x.egress_ip?`${esc(x.egress_ip)}${x.egress_country?` (${esc(x.egress_country)})`:''}`:'Chưa xác minh'}</td><td>${esc(x.keyword)}</td><td><b>${x.rank_position==null?'—':esc(x.rank_position)}</b></td><td class="nowrap">${x.status==='provider_error'?'0':esc(x.result_depth??'—')}</td><td><span class="pill ${isDemo?'not_found':esc(x.status)}">${esc(statusText)}</span></td><td class="detail-cell">${detail}</td></tr>`}).join('')||'<tr><td colspan="10">Chưa có kết quả.</td></tr>';$('updated').textContent='Đã tải '+new Date().toLocaleTimeString()+' · app '+id+' · '+$('countries').value+' / '+$('platform').value+(latest?' · mới nhất':' · lịch sử')+(demoFilter?' · ẩn demo':' · có demo');}catch(e){$('runStatus').textContent='Không tải được kết quả: '+e.message}}
-$('refresh').onclick=async()=>{await checkHealth();await loadResults()};$('loadResults').onclick=loadResults;$('latestOnly').onchange=loadResults;$('countries').onchange=loadResults;$('platform').onchange=loadResults;$('appSelect').onchange=()=>{updateSelectedAppMeta();loadResults()};$('showDemo').onchange=loadResults;
+<html lang="vi">
 
-$('testBrowser').onclick=async()=>{const btn=$('testBrowser');btn.disabled=true;$('connection').textContent='Đang yêu cầu server mở Google Chrome…';try{const d=await api('/api/browser/test',{method:'POST',body:JSON.stringify({browser:$('browser').value})});$('connection').textContent=`${d.message}\nBrowser=${d.browser} | HTTP=${d.httpStatus} | Page=${d.pageTitle}\nURL=${d.url}`;$('connection').style.background='#ecfdf3';}catch(e){$('connection').textContent='Không mở được browser: '+e.message+'\nNếu báo executable/channel không tồn tại, hãy cài Edge/Chrome trên máy đang chạy server.';$('connection').style.background='#fef3f2';}finally{btn.disabled=false}};
-$('searchKeyword').onclick=async()=>{
-  const keyword=$('keywordInput').value.trim();
-  if(!keyword){$('storeSearchStatus').textContent='Hãy nhập từ khóa trước khi tìm kiếm.';return;}
-  const btn=$('searchKeyword');btn.disabled=true;$('storeSearchStatus').textContent='Đang tìm trên Store…';$('storeSearchRows').innerHTML='<tr><td colspan="4">Đang tải kết quả…</td></tr>';
-  try{
-    const d=await api('/api/store/search',{method:'POST',body:JSON.stringify({keyword,country:$('countries').value,platform:$('platform').value,browser:$('browser').value,depth:50})});
-    const rows=d.data||[];
-    $('searchSummary').textContent=`Từ khóa “${d.keyword}” · ${d.country} · ${d.platform} · Đọc được ${d.actual_depth}/${d.requested_depth} kết quả`;
-    $('storeSearchRows').innerHTML=rows.map(x=>`<tr><td><b>${esc(x.rank)}</b></td><td>${esc(x.app_name)}</td><td>${esc(x.store_id||'—')}</td><td>${x.store_url?`<a href="${esc(x.store_url)}" target="_blank" rel="noopener">Mở Store</a>`:'—'}</td></tr>`).join('')||'<tr><td colspan="4">Store không trả kết quả nào.</td></tr>';
-    $('storeSearchStatus').textContent=rows.length?`Đã nhận ${rows.length} kết quả từ truy vấn Store. Đây là thứ tự của danh sách trả về, chưa phải cam kết ranking toàn thị trường.`:'Không có kết quả để hiển thị.';
-  }catch(e){$('storeSearchRows').innerHTML='<tr><td colspan="4">Không lấy được kết quả.</td></tr>';$('storeSearchStatus').textContent='Lỗi tìm kiếm: '+e.message;}
-  finally{btn.disabled=false;}
-};
-$('keywordInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('searchKeyword').click()});
-$('run').onclick=async()=>{const selectedId=Number($('appSelect').value);const ids=[selectedId].filter(n=>Number.isInteger(n)&&n>0);if(!ids.length){$('runStatus').textContent='Hãy chọn một ứng dụng trong danh sách trước khi chạy.';return}const btn=$('run');btn.disabled=true;$('runStatus').textContent='Đang truy vấn Store và lưu kết quả…';try{const d=await api('/api/rankings/run',{method:'POST',body:JSON.stringify({app_ids:ids,countries:[$('countries').value],platforms:[$('platform').value],browser:$('browser').value,keyword:$('keywordInput').value.trim()})});$('runStatus').textContent=`Lượt #${d.runId}: ${d.status==='completed'?'đã chạy xong':d.status==='partial'?'chạy xong nhưng có lỗi':'thất bại'} | app=${d.appsCount} | lần kiểm tra=${d.checksCount} | lỗi truy vấn=${d.providerErrors}. Nếu đã nhập từ khóa, lượt kiểm tra dùng từ khóa đó thay cho từ khóa cấu hình của app. Chỉ tin hạng khi trạng thái là “STORE · Đã tìm thấy”.`;await loadResults()}catch(e){$('runStatus').textContent='Chạy thất bại: '+e.message}finally{btn.disabled=false}};
-async function loadApps(){const select=$('appSelect');select.innerHTML='<option value="">Đang tải danh sách ứng dụng…</option>';try{const d=await api('/api/apps');const apps=(d.data||[]).filter(a=>a.active===1||a.active===true||a.active==null);if(!apps.length){select.innerHTML='<option value="">Không có ứng dụng đang hoạt động</option>';select.disabled=true;$('appMeta').textContent='Hãy đồng bộ ứng dụng từ CMS hoặc kiểm tra dữ liệu trong database.';return}select.disabled=false;select.innerHTML='<option value="">-- Chọn ứng dụng --</option>'+apps.map(a=>`<option value="${esc(a.id)}">${esc(a.app_name)}</option>`).join('');select.value=String(apps[0].id);updateSelectedAppMeta();}catch(e){select.innerHTML='<option value="">Không tải được danh sách</option>';select.disabled=true;$('appMeta').textContent='Lỗi tải ứng dụng: '+e.message;}}
-async function loadCountries(){const select=$('countries');try{const d=await api('/api/config/countries');const countries=(d.data||[]).filter(c=>c.enabled===1||c.enabled===true);if(!countries.length){select.innerHTML='<option value="">Chưa cấu hình quốc gia</option>';select.disabled=true;return}select.disabled=false;select.innerHTML=countries.map(c=>`<option value="${esc(c.country_code)}">${esc(c.country_name)} (${esc(c.country_code)})</option>`).join('');select.value=countries.some(c=>c.country_code==='US')?'US':countries[0].country_code;}catch(e){select.innerHTML='<option value="">Không tải được quốc gia</option>';select.disabled=true;$('runStatus').textContent='Không tải được danh sách quốc gia: '+e.message;}}
-function updateSelectedAppMeta(){const select=$('appSelect');const opt=select.options[select.selectedIndex];$('appMeta').textContent=select.value&&opt?('Đang chọn: '+opt.textContent):'Chọn một ứng dụng trong danh sách.';}
-checkHealth();Promise.all([loadApps(),loadCountries()]).then(loadResults);
-</script></body></html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>App Store Ranking Tool</title>
+  <style>
+    :root {
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      color: #182230;
+      background: #f4f7fb
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0
+    }
+
+    .top {
+      background: #101828;
+      color: #fff;
+      padding: 24px max(20px, calc((100vw - 1200px)/2))
+    }
+
+    .top h1 {
+      font-size: 24px;
+      margin: 0 0 6px
+    }
+
+    .top p {
+      margin: 0;
+      color: #cbd5e1
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 22px auto;
+      padding: 0 18px
+    }
+
+    .panel {
+      background: #fff;
+      border: 1px solid #e3e8ef;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 3px 14px #10182808
+    }
+
+    .panel h2 {
+      font-size: 17px;
+      margin: 0 0 14px
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: #475467;
+      margin-bottom: 6px
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cfd8e3;
+      border-radius: 8px;
+      font: inherit;
+      background: #fff
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 14px
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 15px;
+      background: #175cd3;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer
+    }
+
+    button.secondary {
+      background: #eef4ff;
+      color: #1849a9
+    }
+
+    button:disabled {
+      opacity: .55;
+      cursor: wait
+    }
+
+    .note {
+      font-size: 13px;
+      color: #667085
+    }
+
+    .status {
+      padding: 10px 12px;
+      background: #f2f4f7;
+      border-radius: 8px;
+      margin-top: 12px;
+      font-size: 13px;
+      white-space: pre-wrap
+    }
+
+    .tablewrap {
+      overflow: auto
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 1250px;
+      font-size: 13px
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 10px 9px;
+      border-bottom: 1px solid #eaecf0;
+      vertical-align: top
+    }
+
+    th {
+      background: #f9fafb;
+      color: #475467;
+      white-space: nowrap
+    }
+
+    td a {
+      color: #175cd3
+    }
+
+    .nowrap {
+      white-space: nowrap
+    }
+
+    .detail-cell {
+      min-width: 280px;
+      max-width: 480px;
+      overflow-wrap: anywhere
+    }
+
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: #f2f4f7;
+      font-size: 12px
+    }
+
+    .found {
+      background: #dcfae6;
+      color: #067647
+    }
+
+    .not_found,
+    .invalid_app_id {
+      background: #fef0c7;
+      color: #93370d
+    }
+
+    .provider_error {
+      background: #fee4e2;
+      color: #b42318
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap
+    }
+
+    .field select[multiple] {
+      min-height: 160px
+    }
+
+    @media(max-width:800px) {
+
+      .grid {
+        grid-template-columns: repeat(2, 1fr)
+      }
+    }
+
+    @media(max-width:500px) {
+
+      .grid {
+        grid-template-columns: 1fr
+      }
+
+      .top h1 {
+        font-size: 20px
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="top">
+    <h1>App Store Ranking Tool</h1>
+    <p>Theo dõi thứ hạng ứng dụng trên Google Play và Apple App Store</p>
+  </header>
+  <main class="wrap">
+    <section class="panel">
+      <h2>Chạy kiểm tra ranking</h2>
+      <p class="note">Chọn một hoặc nhiều ứng dụng và quốc gia. Mỗi lần chạy sẽ kiểm tra cả Google Play và Apple App Store.</p>
+      <div class="grid">
+        <div class="field"><label for="appSelect">Ứng dụng</label><select id="appSelect" multiple size="6">
+            <option value="">Đang tải danh sách ứng dụng…</option>
+          </select>
+          <div class="note" id="appMeta" style="margin-top:5px">Chọn một hoặc nhiều ứng dụng.</div>
+          <div class="note">Giữ Ctrl (Windows/Linux) hoặc Cmd (Mac) để chọn nhiều; lựa chọn được lưu trên thiết bị này.</div>
+        </div>
+        <div class="field"><label for="countries">Quốc gia</label><select id="countries" multiple size="6">
+            <option value="">Đang tải quốc gia…</option>
+          </select><div class="note" style="margin-top:5px">Giữ Ctrl (Windows/Linux) hoặc Cmd (Mac) để chọn nhiều quốc gia.</div></div>
+      </div>
+      <div class="actions"><button id="run">Chạy kiểm tra</button></div>
+      <div id="runStatus" class="status">Chưa chạy.</div>
+    </section>
+    <section class="panel">
+      <div class="toolbar">
+        <h2 style="margin:0">Kết quả ranking của ứng dụng đã chọn</h2>
+        <div class="actions" style="margin:0"><span class="note" id="updated">Chưa tải dữ liệu</span><button id="refresh"
+            class="secondary">Làm mới</button></div>
+      </div>
+      <div class="tablewrap" style="margin-top:12px">
+        <table>
+          <thead>
+            <tr>
+              <th>Ứng dụng</th>
+              <th>Store</th>
+              <th>Quốc gia</th>
+              <th>Từ khóa</th>
+              <th>Hạng</th>
+              <th>Trạng thái</th>
+              <th>Kiểm tra lúc</th>
+              <th>Chi tiết</th>
+            </tr>
+          </thead>
+          <tbody id="rows">
+            <tr>
+              <td colspan="8">Đang tải kết quả…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script>
+    const $ = id => document.getElementById(id);
+    const appStorageKey = 'ranking-selected-apps';
+    const countryStorageKey = 'ranking-selected-countries';
+    const statusLabels = {
+      found: 'Đã tìm thấy',
+      not_found: 'Không tìm thấy trong phạm vi đã đọc',
+      provider_error: 'Lỗi truy vấn',
+      provider_not_configured: 'Chưa bật provider',
+      invalid_app_id: 'Thiếu ID Store'
+    };
+
+    function esc(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[char]));
+    }
+
+    async function api(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+      });
+      const text = await response.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { message: text }; }
+      if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+      return data;
+    }
+
+    function selectedValues(select) {
+      return [...select.selectedOptions].map(option => option.value).filter(Boolean);
+    }
+
+    function restoreSelection(select, storageKey, defaults = []) {
+      let saved = defaults;
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored) saved = JSON.parse(stored);
+      } catch (error) {
+        $('runStatus').textContent = `Không đọc được lựa chọn đã lưu: ${error.message}`;
+      }
+      const valid = new Set([...select.options].map(option => option.value));
+      for (const option of select.options) {
+        option.selected = Array.isArray(saved) && saved.includes(option.value) && valid.has(option.value);
+      }
+    }
+
+    function saveSelections() {
+      try {
+        localStorage.setItem(appStorageKey, JSON.stringify(selectedValues($('appSelect'))));
+        localStorage.setItem(countryStorageKey, JSON.stringify(selectedValues($('countries'))));
+      } catch (error) {
+        $('runStatus').textContent = `Không lưu được lựa chọn trên thiết bị này: ${error.message}`;
+      }
+    }
+
+    function updateSelectedAppMeta() {
+      const count = selectedValues($('appSelect')).length;
+      $('appMeta').textContent = count ? `Đang chọn ${count} ứng dụng.` : 'Chọn một hoặc nhiều ứng dụng.';
+    }
+
+    async function loadResults() {
+      const appIds = selectedValues($('appSelect'));
+      const countries = selectedValues($('countries'));
+      if (!appIds.length || !countries.length) {
+        $('rows').innerHTML = '<tr><td colspan="8">Chọn ít nhất một ứng dụng và một quốc gia để xem kết quả.</td></tr>';
+        $('updated').textContent = 'Chưa đủ lựa chọn';
+        return;
+      }
+
+      $('rows').innerHTML = '<tr><td colspan="8">Đang tải kết quả…</td></tr>';
+      try {
+        const params = new URLSearchParams({
+          app_ids: appIds.join(','),
+          countries: countries.join(','),
+          platforms: 'google_play,app_store',
+          latest: '1',
+          exclude_demo: '1',
+          limit: '1000'
+        });
+        const data = await api(`/api/rankings?${params}`);
+        const rows = data.data || [];
+        $('rows').innerHTML = rows.map(row => {
+          const detail = row.store_url
+            ? `<a href="${esc(row.store_url)}" target="_blank" rel="noopener">Mở Store</a>`
+            : esc(row.error_message || '—');
+          const platformName = row.platform === 'google_play' ? 'Google Play' : 'Apple App Store';
+          return `<tr>
+            <td><b>${esc(row.app_name)}</b></td>
+            <td class="nowrap">${platformName}</td>
+            <td class="nowrap">${esc(row.country_code)}</td>
+            <td>${esc(row.keyword)}</td>
+            <td><b>${row.rank_position == null ? '—' : esc(row.rank_position)}</b></td>
+            <td><span class="pill ${esc(row.status)}">${esc(statusLabels[row.status] || row.status || '—')}</span></td>
+            <td class="nowrap">${esc(row.checked_at)}</td>
+            <td class="detail-cell">${detail}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="8">Chưa có kết quả cho các lựa chọn này.</td></tr>';
+        $('updated').textContent = `Cập nhật lúc ${new Date().toLocaleTimeString()} · ${rows.length} kết quả mới nhất`;
+      } catch (error) {
+        $('rows').innerHTML = `<tr><td colspan="8">Không tải được kết quả: ${esc(error.message)}</td></tr>`;
+        $('updated').textContent = 'Tải kết quả thất bại';
+      }
+    }
+
+    async function loadApps() {
+      const select = $('appSelect');
+      try {
+        const data = await api('/api/apps');
+        const apps = (data.data || []).filter(app => app.active === 1 || app.active === true || app.active == null);
+        if (!apps.length) {
+          select.innerHTML = '<option value="">Không có ứng dụng đang hoạt động</option>';
+          select.disabled = true;
+          $('appMeta').textContent = 'Hãy đồng bộ ứng dụng từ CMS hoặc kiểm tra database.';
+          return;
+        }
+        select.innerHTML = apps.map(app =>
+          `<option value="${esc(app.id)}">${esc(app.app_name)}</option>`
+        ).join('');
+        restoreSelection(select, appStorageKey);
+        updateSelectedAppMeta();
+      } catch (error) {
+        select.innerHTML = '<option value="">Không tải được danh sách ứng dụng</option>';
+        select.disabled = true;
+        $('runStatus').textContent = `Không tải được danh sách ứng dụng: ${error.message}`;
+      }
+    }
+
+    async function loadCountries() {
+      const select = $('countries');
+      try {
+        const data = await api('/api/config/countries');
+        const countries = (data.data || []).filter(country => country.enabled === 1 || country.enabled === true);
+        if (!countries.length) {
+          select.innerHTML = '<option value="">Chưa cấu hình quốc gia</option>';
+          select.disabled = true;
+          return;
+        }
+        select.innerHTML = countries.map(country =>
+          `<option value="${esc(country.country_code)}">${esc(country.country_name)} (${esc(country.country_code)})</option>`
+        ).join('');
+        restoreSelection(select, countryStorageKey, [countries.some(country => country.country_code === 'US') ? 'US' : countries[0].country_code]);
+      } catch (error) {
+        select.innerHTML = '<option value="">Không tải được danh sách quốc gia</option>';
+        select.disabled = true;
+        $('runStatus').textContent = `Không tải được danh sách quốc gia: ${error.message}`;
+      }
+    }
+
+    $('appSelect').addEventListener('change', () => {
+      updateSelectedAppMeta();
+      saveSelections();
+      loadResults();
+    });
+    $('countries').addEventListener('change', () => {
+      saveSelections();
+      loadResults();
+    });
+    $('refresh').addEventListener('click', loadResults);
+    $('run').addEventListener('click', async () => {
+      const appIds = selectedValues($('appSelect')).map(Number).filter(id => Number.isInteger(id) && id > 0);
+      const countries = selectedValues($('countries'));
+      if (!appIds.length || !countries.length) {
+        $('runStatus').textContent = 'Hãy chọn ít nhất một ứng dụng và một quốc gia trước khi chạy.';
+        return;
+      }
+
+      const button = $('run');
+      button.disabled = true;
+      $('runStatus').textContent = 'Đang kiểm tra các ứng dụng trên cả hai Store…';
+      try {
+        const result = await api('/api/rankings/run', {
+          method: 'POST',
+          body: JSON.stringify({ app_ids: appIds, countries })
+        });
+        const runStatus = result.status === 'completed' ? 'đã chạy xong' :
+          result.status === 'partial' ? 'chạy xong nhưng có lỗi' : 'thất bại';
+        $('runStatus').textContent = `Lượt #${result.runId}: ${runStatus} · ${result.appsCount} ứng dụng · ${result.checksCount} lần kiểm tra · ${result.providerErrors} lỗi.`;
+        await loadResults();
+      } catch (error) {
+        $('runStatus').textContent = `Chạy thất bại: ${error.message}`;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    Promise.all([loadApps(), loadCountries()]).then(loadResults);
+  </script>
+</body>
+
+</html>

@@ -113,19 +113,10 @@ Các endpoint chính:
 | `POST` | `/api/apps/sync` | Đồng bộ app từ CMS |
 | `GET` | `/api/config/countries` | Danh sách quốc gia và trạng thái |
 | `POST` | `/api/config/countries` | Thêm/cập nhật cấu hình quốc gia |
-| `POST` | `/api/store/search` | Tìm từ khóa, trả danh sách kết quả có `rank` |
 | `POST` | `/api/rankings/run` | Chạy và lưu ranking cho app đã chọn |
 | `GET` | `/api/rankings` | Đọc kết quả mới nhất/lịch sử |
 | `GET` | `/api/rankings/history?app_id=1` | Lịch sử theo app |
 | `GET` | `/api/runs` | Lịch sử các lượt chạy |
-
-Ví dụ tìm trực tiếp một từ khóa:
-
-```powershell
-curl.exe -X POST http://localhost:3000/api/store/search `
-  -H "Content-Type: application/json" `
-  -d '{"keyword":"driving test","country":"US","platform":"google_play","depth":50}'
-```
 
 Ví dụ chạy app ID nội bộ `1` tại US và Canada trên cả hai Store:
 
@@ -141,7 +132,7 @@ curl.exe -X POST http://localhost:3000/api/rankings/run `
 GET /api/rankings?app_id=1&latest=1
 ```
 
-`/api/rankings` yêu cầu `app_id` hoặc `app_ids`; có thể lọc thêm bằng `platform`, `country`, `keyword`, `status`, `from`, `to`, `latest` và `limit` (tối đa 1000). Trường `rank_position` là thứ hạng; `status` gồm `found`, `not_found`, `provider_error`, `provider_not_configured` hoặc `invalid_app_id`. Trạng thái `not_found` có nghĩa app không nằm trong số kết quả thực tế đã đọc, không phải hạng 0.
+`/api/rankings` yêu cầu `app_id` hoặc `app_ids`; có thể lọc thêm bằng `platform` hoặc `platforms`, `country` hoặc `countries`, `keyword`, `status`, `from`, `to`, `latest` và `limit` (tối đa 1000). Trường `rank_position` là thứ hạng; `status` gồm `found`, `not_found`, `provider_error`, `provider_not_configured` hoặc `invalid_app_id`. Trạng thái `not_found` có nghĩa app không nằm trong số kết quả thực tế đã đọc, không phải hạng 0.
 
 ## Vận hành và giới hạn
 
@@ -150,3 +141,61 @@ GET /api/rankings?app_id=1&latest=1
 - Chỉ mở server ra mạng sau khi cấu hình xác thực và bảo vệ API phù hợp. Mặc định project hướng tới chạy nội bộ; không expose trực tiếp API không xác thực lên Internet.
 - Không commit `.env` hoặc chia sẻ thông tin kết nối DB.
 # app-store-ranking-tool
+
+## Chạy bằng Docker (Windows)
+
+### 1. Chuẩn bị
+
+- Cài Docker Desktop và bật chế độ Linux containers.
+- Mở PowerShell tại thư mục dự án.
+- Tạo file cấu hình nếu chưa có:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Mở `.env` và cấu hình tối thiểu:
+- `API_TOKEN`: đặt một token riêng.
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`: thông tin MySQL hoặc TiDB Cloud.
+- Với TiDB Cloud, bật `DB_SSL=true` và điền thông tin kết nối cluster.
+
+**Lưu ý:** Nếu MySQL chạy trực tiếp trên Windows (ví dụ XAMPP), đặt `DB_HOST=host.docker.internal`, không dùng `127.0.0.1`. Nếu dùng TiDB Cloud, `DB_HOST` là hostname cluster.
+
+### 2. Build và khởi tạo database
+
+```powershell
+docker compose build
+docker compose run --rm app npm run db:init
+```
+
+Lệnh trên khởi tạo schema trên database đã cấu hình; không tự chuyển dữ liệu cũ.
+
+### 3. Chạy ứng dụng
+
+```powershell
+docker compose up -d
+docker compose logs -f app
+```
+
+Mở giao diện tại http://localhost:3000. API được bảo vệ bằng Bearer token. Ví dụ:
+
+```powershell
+$headers = @{ Authorization = "Bearer YOUR_API_TOKEN" }
+Invoke-RestMethod -Uri "http://localhost:3000/health" -Headers $headers
+```
+
+### 4. Đồng bộ ứng dụng và chạy ranking
+
+```powershell
+docker compose exec app npm run sync:apps
+docker compose exec app npm run run:rankings
+```
+
+Xem log: `docker compose logs -f app`  
+Dừng: `docker compose down`
+
+### Ghi chú về trình duyệt trong Docker
+
+Docker chạy Chromium ở chế độ headless bên trong container để thu thập dữ liệu. Nó **không mở cửa sổ Edge/Chrome trên desktop Windows**. Muốn nhìn thấy cửa sổ trình duyệt để debug, chạy project trực tiếp trên Windows bằng `npm run dev` và cấu hình `RANKING_BROWSER=msedge`, `RANKING_BROWSER_HEADLESS=false` trong `.env`.
+
+Compose này kết nối tới database được khai báo trong `.env` (ví dụ TiDB Cloud); không tạo thêm MySQL container và không chứa thông tin đăng nhập database.

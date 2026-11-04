@@ -7,10 +7,8 @@ const auth = require('./middleware/auth');
 const { syncApps } = require('./services/app-sync-service');
 const { runRankings } = require('./services/ranking-service');
 const { getCountries } = require('./services/country-service');
-const { COUNTRY, closeBrowser, search: searchStore, normalizeItem } = require('./providers/store-scraper');
+const { COUNTRY, closeBrowser } = require('./providers/store-scraper');
 const path = require('path');
-const { chromium } = require('playwright');
-let browserTestInstance = null;
 
 const app = express();
 app.use(cors());
@@ -64,31 +62,6 @@ app.post('/api/config/countries', async (req, res, next) => {
     res.status(201).json({ ok: true, country_code: code });
   } catch (e) { next(e); }
 });
-app.post('/api/browser/test', async (req, res, next) => {
-  try {
-    const requested = String(req.body?.browser || 'chrome').toLowerCase();
-    const channels = { msedge: 'msedge', edge: 'msedge', chrome: 'chrome' };
-    if (!['msedge', 'edge', 'chrome', 'chromium'].includes(requested)) {
-      return res.status(400).json({ ok: false, message: 'Chọn msedge, chrome hoặc chromium.' });
-    }
-    if (browserTestInstance) {
-      try { await browserTestInstance.close(); } catch (_) {}
-      browserTestInstance = null;
-    }
-    const options = { headless: false };
-    if (channels[requested]) options.channel = channels[requested];
-    browserTestInstance = await chromium.launch(options);
-    const page = await browserTestInstance.newPage({ viewport: { width: 1365, height: 900 } });
-    const target = 'https://play.google.com/store/search?q=CPA&c=apps';
-    const response = await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    const title = await page.title().catch(() => '');
-    res.json({ ok: true, browser: requested, headless: false, pageTitle: title, httpStatus: response?.status() ?? null, url: page.url(), message: 'Đã mở trình duyệt kiểm tra. Cửa sổ được giữ mở; đóng cửa sổ hoặc dừng server để kết thúc.' });
-  } catch (e) {
-    if (browserTestInstance) { try { await browserTestInstance.close(); } catch (_) {} browserTestInstance = null; }
-    res.status(500).json({ ok: false, message: `Không mở được trình duyệt: ${e.message}` });
-  }
-});
-
 app.post('/api/rankings/run', async (req, res, next) => {
   try {
     const countries = [...new Set(csvList(req.body?.countries, config.countries).map(x => x.toUpperCase()))];
@@ -111,53 +84,6 @@ app.post('/api/rankings/run', async (req, res, next) => {
     res.json({ ok: true, ...result });
   } catch (e) { next(e); }
 });
-app.post('/api/store/search', async (req, res, next) => {
-  try {
-    const keyword = String(req.body?.keyword || '').trim();
-    const country = String(req.body?.country || 'US').toUpperCase();
-    const platform = String(req.body?.platform || 'google_play');
-    const browser = String(req.body?.browser || process.env.RANKING_BROWSER || 'chrome').toLowerCase();
-    const depth = Math.min(200, Math.max(1, Number.parseInt(req.body?.depth || '50', 10) || 50));
-    if (!keyword) return res.status(400).json({ error: 'Nhập từ khóa cần tìm.' });
-    if (keyword.length > 200) return res.status(400).json({ error: 'Từ khóa tối đa 200 ký tự.' });
-    const [market] = await getCountries([country]);
-    if (!market) return res.status(400).json({ error: 'Quốc gia chưa được cấu hình hoặc đang tắt: ' + country });
-    if (!['google_play', 'app_store'].includes(platform)) return res.status(400).json({ error: 'platform chỉ nhận google_play hoặc app_store.' });
-    if (!['msedge', 'edge', 'chrome', 'google-chrome', 'chromium'].includes(browser)) return res.status(400).json({ error: 'Trình duyệt không hợp lệ.' });
-    const result = await searchStore(platform, keyword, country, depth, {
-      browser,
-      market: {
-        name: market.country_name,
-        locationCode: market.google_location_code,
-        storefront: market.apple_storefront,
-        language: market.language_code
-      }
-    });
-    const items = (Array.isArray(result.items) ? result.items : []).map((item, index) => {
-      const normalized = normalizeItem(item, platform);
-      return { rank: item.rank ?? index + 1, app_name: normalized.title || 'Không có tên', store_id: normalized.storeId, store_url: normalized.url, source: item.source || 'store' };
-    });
-    res.json({
-      ok: true, keyword, country, platform,
-      requested_depth: depth,
-      actual_depth: items.length,
-      search_url: result.raw?.searchUrl || result.raw?.url || null,
-      rank_method: result.raw?.rankMethod || result.raw?.note || null,
-      egress_ip_verified: result.raw?.egressIpVerified ?? false,
-      source: result.raw?.source || null,
-      diagnostics: platform === 'google_play' ? (result.items || []).map((item, index) => ({
-        rank: index + 1,
-        store_id: item.appId || item.id || null,
-        app_name: item.title || item.name || null,
-        document_top: item.documentTop ?? null,
-        document_left: item.documentLeft ?? null,
-        card_text: item.cardText || null
-      })) : undefined,
-      data: items
-    });
-  } catch (e) { next(e); }
-});
-
 app.get('/api/rankings', async (req, res, next) => {
   try {
     if (req.query.app_id === undefined && req.query.app_ids === undefined) {
@@ -168,9 +94,29 @@ app.get('/api/rankings', async (req, res, next) => {
     for (const [key, column] of Object.entries({ app_id: 'r.ung_dung_id', platform: 'r.nen_tang', country: 'r.ma_quoc_gia', keyword: 'r.tu_khoa', status: 'r.trang_thai' })) {
       if (req.query[key] !== undefined) { conditions.push(`${column} = ?`); values.push(req.query[key]); }
     }
-    if (req.query.app_ids) {
-      const ids = String(req.query.app_ids).split(',').map(x => Number(x.trim())).filter(x => Number.isInteger(x) && x > 0);
-      if (ids.length) { conditions.push(`r.ung_dung_id IN (${ids.map(() => '?').join(',')})`); values.push(...ids); }
+    if (req.query.app_ids !== undefined) {
+      const ids = String(req.query.app_ids).split(',').map(x => Number(x.trim()));
+      if (!ids.length || ids.some(id => !Number.isInteger(id) || id < 1)) {
+        return res.status(400).json({ error: 'app_ids phải là danh sách ID số dương, phân cách bằng dấu phẩy.' });
+      }
+      conditions.push(`r.ung_dung_id IN (${ids.map(() => '?').join(',')})`);
+      values.push(...ids);
+    }
+    if (req.query.countries !== undefined) {
+      const countries = [...new Set(String(req.query.countries).split(',').map(code => code.trim().toUpperCase()).filter(Boolean))];
+      if (!countries.length || countries.some(code => !/^[A-Z]{2}$/.test(code))) {
+        return res.status(400).json({ error: 'countries phải là danh sách mã quốc gia ISO 2 ký tự.' });
+      }
+      conditions.push(`r.ma_quoc_gia IN (${countries.map(() => '?').join(',')})`);
+      values.push(...countries);
+    }
+    if (req.query.platforms !== undefined) {
+      const platforms = [...new Set(String(req.query.platforms).split(',').map(platform => platform.trim()).filter(Boolean))];
+      if (!platforms.length || platforms.some(platform => !['google_play', 'app_store'].includes(platform))) {
+        return res.status(400).json({ error: 'platforms chỉ nhận google_play, app_store.' });
+      }
+      conditions.push(`r.nen_tang IN (${platforms.map(() => '?').join(',')})`);
+      values.push(...platforms);
     }
     if (req.query.exclude_demo === '1' || req.query.exclude_demo === 'true') {
       conditions.push(`COALESCE(r.nha_cc, '') <> 'demo'`);
@@ -261,7 +207,7 @@ async function main() {
       scheduledRunInProgress = false;
     }
   }, { timezone: config.timezone });
-  process.on('SIGINT', async () => { server.close(); await closeBrowser(); if (browserTestInstance) await browserTestInstance.close().catch(() => {}); await pool.end(); process.exit(0); });
-  process.on('SIGTERM', async () => { server.close(); await closeBrowser(); if (browserTestInstance) await browserTestInstance.close().catch(() => {}); await pool.end(); process.exit(0); });
+  process.on('SIGINT', async () => { server.close(); await closeBrowser(); await pool.end(); process.exit(0); });
+  process.on('SIGTERM', async () => { server.close(); await closeBrowser(); await pool.end(); process.exit(0); });
 }
 main().catch(e => { console.error('Startup failed:', e.message); process.exit(1); });
