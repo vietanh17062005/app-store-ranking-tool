@@ -3,6 +3,7 @@ const path = require('path');
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 const config = require('../config');
+const { ensureCustomKeywordColumn } = require('../services/schema-service');
 
 async function main() {
   // Connect without a database so the schema script can create it.
@@ -15,6 +16,7 @@ async function main() {
   try {
     const sql = fs.readFileSync(path.join(__dirname, '../../database/schema.sql'), 'utf8');
     await connection.query(sql);
+    await ensureCustomKeywordColumn();
     console.log('Database schema initialized.');
   } finally { await connection.end(); }
 }

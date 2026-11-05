@@ -89,6 +89,7 @@ Các endpoint chính:
 |---|---|---|
 | `GET` | `/health` | Kiểm tra API và kết nối DB |
 | `GET` | `/api/apps` | Danh sách app đã đồng bộ |
+| `PUT` | `/api/apps/:id/keywords` | Cấu hình từ khóa tìm kiếm bổ sung theo app |
 | `POST` | `/api/apps/sync` | Đồng bộ app từ CMS |
 | `GET` | `/api/config/countries` | Danh sách quốc gia và trạng thái |
 | `POST` | `/api/config/countries` | Thêm/cập nhật cấu hình quốc gia |
@@ -96,22 +97,110 @@ Các endpoint chính:
 | `GET` | `/api/rankings` | Đọc kết quả mới nhất/lịch sử |
 | `GET` | `/api/rankings/history?app_id=1` | Lịch sử theo app |
 | `GET` | `/api/runs` | Lịch sử các lượt chạy |
+| `POST` | `/api/v1/rank-check` | API tích hợp: tên app + quốc gia + map keywords → thứ hạng |
+| `GET` | `/api/v1/rank-check/:runId` | Đọc kết quả/trạng thái lượt chạy API |
 
-Ví dụ chạy app ID nội bộ `1` tại US và Canada trên cả hai Store:
+Các tool khác có thể gọi API qua domain Coolify (hoặc `http://localhost:3000` khi chạy local). Ví dụ chạy app ID nội bộ `1` tại US và Canada trên cả hai Store:
 
 ```powershell
-curl.exe -X POST http://localhost:3000/api/rankings/run `
+curl.exe -X POST https://your-ranking-domain.example/api/rankings/run `
   -H "Content-Type: application/json" `
   -d '{"app_ids":[1],"countries":["US","CA"],"platforms":["google_play","app_store"]}'
 ```
 
-Đọc kết quả mới nhất cho app:
+Đặt các từ khóa tìm kiếm bổ sung riêng cho app; mỗi phần tử là một cụm từ riêng:
 
-```text
-GET /api/rankings?app_id=1&latest=1
+```sh
+curl -X PUT https://your-ranking-domain.example/api/apps/1/keywords \
+  -H "Content-Type: application/json" \
+  -d '{"keywords":["aws csa","saa-c03"]}'
 ```
 
-`/api/rankings` yêu cầu `app_id` hoặc `app_ids`; có thể lọc thêm bằng `platform` hoặc `platforms`, `country` hoặc `countries`, `keyword`, `status`, `from`, `to`, `latest` và `limit` (tối đa 1000). Trường `rank_position` là thứ hạng; `status` gồm `found`, `not_found`, `provider_error`, `provider_not_configured` hoặc `invalid_app_id`. Trạng thái `not_found` có nghĩa app không nằm trong số kết quả thực tế đã đọc, không phải hạng 0.
+Mỗi ứng dụng có thể cấu hình nhiều từ khóa (khuyến nghị 2–3 từ khóa cơ bản). Khi chạy Ranking, hệ thống tự động kiểm tra **tất cả từ khóa đã cấu hình** cho từng nền tảng và quốc gia; mỗi từ khóa được lưu thành một kết quả riêng. Tên viết tắt ngắn như CEH được giữ nguyên, không tự mở rộng thành cụm dài. Nếu chưa có cấu hình riêng, hệ thống tạo danh sách mặc định từ tên ứng dụng và các biến thể nhận diện phù hợp. Lưu một danh sách riêng bằng `PUT /api/apps/:id/keywords` sẽ thay danh sách CMS/gợi ý mặc định cho app đó; gửi `{"keywords":[]}` để xóa danh sách riêng và quay về từ khóa CMS/gợi ý hợp lệ. Đồng bộ app từ CMS không ghi đè cấu hình riêng.
+
+Đọc kết quả mới nhất trong ngày cho các app/quốc gia đã chọn:
+
+```text
+GET /api/rankings?app_ids=1&countries=US,CA&platforms=google_play,app_store&latest=1&today=1
+```
+
+`/api/rankings` yêu cầu `app_id`, `app_ids` hoặc `run_id`; có thể lọc thêm bằng `platform` hoặc `platforms`, `country` hoặc `countries`, `keyword`, `status`, `from`, `to`, `latest`, `today` và `limit` (tối đa 1000). `today=1` chỉ lấy dữ liệu từ đầu ngày hiện tại theo `TIMEZONE`; phản hồi kèm `daily_reset_at` để client biết thời điểm kết quả hết hạn và tải lại. `latest=1` lấy bản ghi gần nhất theo app/Store/quốc gia/từ khóa. Trường `rank_position` là thứ hạng; `status` gồm `found`, `not_found`, `provider_error`, `provider_not_configured` hoặc `invalid_app_id`. Trạng thái `not_found` có nghĩa app không nằm trong số kết quả thực tế đã đọc, không phải hạng 0.
+
+## API tích hợp cho tool khác (`/api/v1`)
+
+Tool khác chỉ cần gửi **tên app + quốc gia + map app → keywords** để nhận thứ hạng, không cần biết ID nội bộ.
+
+### `POST /api/v1/rank-check`
+
+```json
+{
+  "apps": ["asvab", "cdl"],
+  "countries": ["us", "vn"],
+  "keywords": {
+    "asvab": ["asvab practice test", "asvab study guide"],
+    "cdl": ["cdl practice test"]
+  },
+  "platforms": ["google_play", "app_store"],
+  "async": false
+}
+```
+
+| Trường | Bắt buộc | Mô tả |
+|---|---|---|
+| `apps` hoặc `app` | Có* | Tên/key app, ví dụ `asvab`, `cdl`. Khớp theo `ma_cms` (key CMS) → tên đầy đủ → tên chứa cụm đó, không phân biệt hoa thường. Nếu khớp nhiều app trả `409 ambiguous_app` kèm danh sách `candidates`. |
+| `countries` hoặc `country` | Có | Mã ISO-2 (`us`, `vn`), phải là quốc gia đã bật trong `/api/config/countries`. |
+| `keywords` (hoặc `keys`) | Không | Map `app → [keywords]`. App có trong map dùng đúng các keyword này cho lượt chạy hiện tại (**không ghi đè** cấu hình từ khóa đã lưu). App không có trong map dùng từ khóa đã cấu hình. Tối đa 50 keyword/app. |
+| `platforms` | Không | Mặc định cả `google_play` và `app_store`. |
+| `async` | Không | `true`: trả `202` ngay kèm `run_id`, kiểm tra xong sẽ đọc bằng GET. Mặc định `false`: chờ chạy xong rồi trả kết quả. |
+
+\* Có thể bỏ `apps` nếu đã có `keywords` (lấy danh sách app từ key của map), hoặc gộp thành `"apps": {"asvab": [...], "cdl": [...]}`.
+
+Mỗi lượt kiểm tra là một tổ hợp app × keyword × store × quốc gia, mất vài giây tới vài chục giây vì dùng browser và có throttle. Với yêu cầu lớn nên dùng `async: true` để tránh timeout HTTP. Số lượt tối đa mỗi yêu cầu là `API_MAX_CHECKS` (mặc định 200). Các yêu cầu API được xếp hàng chạy tuần tự.
+
+Phản hồi:
+
+```json
+{
+  "ok": true,
+  "matched_apps": [{ "app_id": 1, "key": "asvab", "name": "ASVAB Practice Test" }],
+  "run_id": 12,
+  "status": "completed",
+  "checks_done": 4,
+  "apps": [{
+    "app_id": 1, "key": "asvab", "name": "ASVAB Practice Test",
+    "results": [{
+      "platform": "google_play", "country": "US", "keyword": "asvab practice test",
+      "rank": 2, "status": "found", "result_depth": 200,
+      "store_url": "https://play.google.com/store/apps/details?id=...",
+      "error_message": null, "checked_at": "2026-11-05T07:26:16.931Z"
+    }]
+  }]
+}
+```
+
+`rank` là vị trí 1-based; `null` khi `status` là `not_found`, `provider_error`, `provider_not_configured` hoặc `invalid_app_id` (ý nghĩa như ở `/api/rankings`). `status` của lượt chạy: `running`, `completed`, `partial` (có lỗi ở một số lượt), `failed`. Kết quả cũng được lưu vào lịch sử như các lượt chạy khác.
+
+### `GET /api/v1/rank-check/:runId`
+
+Đọc trạng thái và kết quả hiện có của một lượt chạy (dùng sau `async: true`); cùng định dạng phản hồi như trên. Khi `status` là `running`, `apps` chứa các lượt đã xong; lặp lại tới khi `status` khác `running`.
+
+### Xác thực và lỗi
+
+Đặt `API_TOKEN` trong `.env` để bắt buộc `Authorization: Bearer <token>` (hoặc header `X-API-Key`) cho `/api/v1`. Nếu để trống, API mở không xác thực như các endpoint cũ (log cảnh báo). Lỗi trả JSON `{ "ok": false, "error": "<mã>", "message": "..." }` với các mã: `unauthorized` (401), `invalid_*`/`country_not_configured`/`too_many_checks` (400), `app_not_found`/`run_not_found` (404), `ambiguous_app`/`no_apps` (409).
+
+Ví dụ:
+
+```sh
+curl -X POST https://your-ranking-domain.example/api/v1/rank-check \
+  -H "Authorization: Bearer YOUR_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"apps":["asvab","cdl"],"countries":["us","vn"],"keywords":{"asvab":["asvab practice test"],"cdl":["cdl practice test"]},"async":true}'
+
+curl -H "Authorization: Bearer YOUR_API_TOKEN" https://your-ranking-domain.example/api/v1/rank-check/12
+```
+
+Lưu ý: lịch chạy hằng ngày (cron) và API dùng chung một browser nhưng không khóa lẫn nhau; tránh gọi API đúng giờ cron nếu dùng IP/proxy một lượt.
+
+Các endpoint REST khác (ngoài `/api/v1`) hiện không yêu cầu xác thực. Chỉ cho phép tool tin cậy truy cập; trước khi public domain, hãy đặt lớp xác thực/kiểm soát truy cập ở reverse proxy hoặc mạng triển khai.
 
 ## Vận hành và giới hạn
 
@@ -192,3 +281,16 @@ Dừng: `docker compose -f compose.yaml -f compose.local.yaml down`
 Docker chạy Chromium ở chế độ headless bên trong container để thu thập dữ liệu; nó không mở cửa sổ trình duyệt trên desktop.
 
 Compose này kết nối tới database được khai báo trong `.env` (ví dụ TiDB Cloud); không tạo thêm MySQL container và không chứa thông tin đăng nhập database.
+
+
+## Quản lý từ khóa trên giao diện
+
+- Mở mục **Quản lý từ khóa tìm kiếm theo ứng dụng** trên trang web.
+- Tìm ứng dụng cần cấu hình, mở thẻ ứng dụng để xem danh sách từ khóa.
+- Chọn **+ Thêm từ khóa** để thêm, sửa trực tiếp nội dung trong ô, hoặc chọn **Xóa** để bỏ từ khóa.
+- Chọn **Lưu cấu hình** để lưu danh sách riêng cho ứng dụng. Danh sách đã lưu là danh sách duy nhất được dùng khi chạy Ranking; không tự động ghép thêm từ khóa gợi ý/CMS sau khi đã lưu.
+- Mỗi ứng dụng có danh sách từ khóa riêng trên giao diện; khuyến nghị cấu hình 2–3 từ khóa cơ bản.
+- Khi chạy thủ công hoặc tự động theo lịch, hệ thống kiểm tra tất cả từ khóa đã cấu hình của từng ứng dụng theo từng quốc gia và nền tảng.
+- Bảng kết quả hiển thị STT, từ khóa thực tế đã tìm, hạng và thời gian kiểm tra cho từng Store.
+
+Cấu hình được lưu trong cột `tu_khoa_tuy_chinh` của bảng `ung_dung`. Với database đã tạo trước đó, ứng dụng tự kiểm tra và thêm cột này khi khởi động/chạy ranking nếu cột chưa tồn tại.

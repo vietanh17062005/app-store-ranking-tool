@@ -1,6 +1,6 @@
 {
   "name": "app-store-ranking-tool",
-  "version": "1.0.14",
+  "version": "1.0.17",
   "description": "Track Google Play and Apple App Store keyword search rankings by country",
   "main": "src/server.js",
   "scripts": {

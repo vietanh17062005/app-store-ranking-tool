@@ -13,6 +13,7 @@ const pool = mysql.createPool({
   connectionLimit: config.db.connectionLimit,
   queueLimit: 0,
   charset: 'utf8mb4',
+  timezone: 'Z',
   dateStrings: true
 });
 

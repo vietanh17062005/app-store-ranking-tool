@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS ung_dung (
   id_apple VARCHAR(64) NULL,
   goi_apple VARCHAR(255) NULL,
   tu_khoa JSON NULL,
+  tu_khoa_tuy_chinh JSON NULL,
   du_lieu_cms JSON NULL,
   kich_hoat TINYINT(1) NOT NULL DEFAULT 1,
   tao_luc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

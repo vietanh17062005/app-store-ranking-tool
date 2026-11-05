@@ -2,6 +2,8 @@ const pool = require('../db');
 const config = require('../config');
 const provider = require('../providers/store-scraper');
 const { getCountries } = require('./country-service');
+const { ensureCustomKeywordColumn } = require('./schema-service');
+const { defaultKeywordsForApp } = require('./keyword-suggestions');
 
 const PLATFORM_ID_FIELDS = {
   google_play: ['google_play_id'],
@@ -11,6 +13,32 @@ const PLATFORM_ID_FIELDS = {
 function appIdentifier(app, platform) {
   if (platform === 'google_play') return app.google_play_id;
   return app.app_store_id || app.app_store_bundle_id;
+}
+function parseKeywords(value, appName, source) {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    throw new Error(`Không đọc được ${source} của ứng dụng "${appName}": ${error.message}`);
+  }
+}
+function appSearchTerms(app) {
+  const cmsKeywords = parseKeywords(app.keywords, app.app_name, 'từ khóa CMS');
+  let rawCms = app.raw_cms_json;
+  if (typeof rawCms === 'string') {
+    try { rawCms = JSON.parse(rawCms); } catch { rawCms = {}; }
+  }
+  const storeNameKeywords = [rawCms?.android?.name, rawCms?.ios?.name, rawCms?.flutterAndroid?.name]
+    .filter(value => typeof value === 'string' && value.trim());
+  const defaultKeywords = defaultKeywordsForApp(app.app_name, cmsKeywords, storeNameKeywords);
+  const configuredKeywords = app.custom_keywords == null
+    ? defaultKeywords
+    : parseKeywords(app.custom_keywords, app.app_name, 'từ khóa đã cấu hình');
+  return [...new Set(configuredKeywords
+    .filter(keyword => typeof keyword === 'string' && keyword.trim())
+    .map(keyword => keyword.trim()))].slice(0, 50);
 }
 function itemMatches(item, app, platform) {
   const wanted = appIdentifier(app, platform);
@@ -104,7 +132,9 @@ async function runOne(connection, runId, app, platform, country, keyword, browse
     });
   }
 }
-async function runRankings({ triggerType = 'manual', countries = config.countries, appIds = null, platforms = ['google_play', 'app_store'], browser = process.env.RANKING_BROWSER || 'chrome', keywordOverride = '' } = {}) {
+// keywordsByApp (tùy chọn): { [appId]: string[] } ghi đè từ khóa đã cấu hình cho lượt chạy này (không lưu vào DB).
+// onRunCreated (tùy chọn): gọi ngay khi lượt chạy được tạo, dùng cho chế độ bất đồng bộ.
+async function runRankings({ triggerType = 'manual', countries = config.countries, appIds = null, platforms = ['google_play', 'app_store'], browser = process.env.RANKING_BROWSER || 'chrome', keywordsByApp = null, onRunCreated = null } = {}) {
   // Use the pool for each query. A single checked-out connection can be closed
   // by MySQL during long browser/proxy requests, causing "connection is in closed state".
   const connection = pool;
@@ -114,10 +144,17 @@ async function runRankings({ triggerType = 'manual', countries = config.countrie
   try {
     if (!Array.isArray(countries) || !countries.length) throw new Error('Phải cấu hình ít nhất một quốc gia trước khi chạy ranking.');
     if (!Array.isArray(platforms) || !platforms.length) throw new Error('Phải chọn ít nhất một nền tảng trước khi chạy ranking.');
+    await ensureCustomKeywordColumn();
     const [apps] = appIds?.length
-      ? await connection.query('SELECT id, ma_cms AS cms_key, ten AS app_name, id_google AS google_play_id, id_apple AS app_store_id, goi_apple AS app_store_bundle_id, tu_khoa AS keywords, du_lieu_cms AS raw_cms_json, kich_hoat AS active, tao_luc AS created_at, sua_luc AS updated_at FROM ung_dung WHERE kich_hoat=1 AND id IN (?) ORDER BY id', [appIds])
-      : await connection.query('SELECT id, ma_cms AS cms_key, ten AS app_name, id_google AS google_play_id, id_apple AS app_store_id, goi_apple AS app_store_bundle_id, tu_khoa AS keywords, du_lieu_cms AS raw_cms_json, kich_hoat AS active, tao_luc AS created_at, sua_luc AS updated_at FROM ung_dung WHERE kich_hoat=1 ORDER BY id');
+      ? await connection.query('SELECT id, ma_cms AS cms_key, ten AS app_name, id_google AS google_play_id, id_apple AS app_store_id, goi_apple AS app_store_bundle_id, tu_khoa AS keywords, tu_khoa_tuy_chinh AS custom_keywords, du_lieu_cms AS raw_cms_json, kich_hoat AS active, tao_luc AS created_at, sua_luc AS updated_at FROM ung_dung WHERE kich_hoat=1 AND id IN (?) ORDER BY id', [appIds])
+      : await connection.query('SELECT id, ma_cms AS cms_key, ten AS app_name, id_google AS google_play_id, id_apple AS app_store_id, goi_apple AS app_store_bundle_id, tu_khoa AS keywords, tu_khoa_tuy_chinh AS custom_keywords, du_lieu_cms AS raw_cms_json, kich_hoat AS active, tao_luc AS created_at, sua_luc AS updated_at FROM ung_dung WHERE kich_hoat=1 ORDER BY id');
     if (!apps.length) throw new Error('Không có ứng dụng active trong DB. Hãy chạy POST /api/apps/sync trước.');
+    const searchTermsByApp = new Map(apps.map(app => [app.id, keywordsByApp?.[app.id]?.length ? keywordsByApp[app.id] : appSearchTerms(app)]));
+    for (const app of apps) {
+      if (!searchTermsByApp.get(app.id).length) {
+        throw new Error(`Ứng dụng "${app.app_name}" chưa có từ khóa. Hãy thêm từ khóa trong phần quản lý từ khóa.`);
+      }
+    }
     const countryRows = await getCountries(countries);
     const markets = new Map(countryRows.map(row => [row.country_code, {
       name: row.country_name,
@@ -134,14 +171,13 @@ async function runRankings({ triggerType = 'manual', countries = config.countrie
       [new Date(), triggerType, 'running', apps.length]
     );
     runId = runResult.insertId;
+    if (typeof onRunCreated === 'function') onRunCreated(runId);
 
     for (const app of apps) {
-      const keywords = Array.isArray(app.keywords) ? app.keywords : (app.keywords ? JSON.parse(app.keywords) : []);
-      const customKeyword = String(keywordOverride || '').trim();
-      const searchTerms = customKeyword ? [customKeyword] : [...new Set((keywords.length ? keywords : [app.app_name]).filter(Boolean))];
-      for (const platform of platforms) {
-        for (const country of countries) {
-          for (const keyword of searchTerms) {
+      const keywords = searchTermsByApp.get(app.id);
+      for (const keyword of keywords) {
+        for (const platform of platforms) {
+          for (const country of countries) {
             await runOne(connection, runId, app, platform, country, keyword, browser, markets.get(country));
             checks++;
           }
@@ -168,4 +204,4 @@ async function runRankings({ triggerType = 'manual', countries = config.countrie
     // Pool connections are managed by mysql2; do not release/end the pool here.
   }
 }
-module.exports = { runRankings };
+module.exports = { runRankings, appSearchTerms };
