@@ -1,134 +1,72 @@
 # App Store Ranking Tool
 
-Tool Node.js lấy thứ hạng ứng dụng theo từ khóa trên Google Play và Apple App Store, đồng bộ danh sách ứng dụng từ CMS, lưu lịch sử vào MySQL/MariaDB và cung cấp REST API/dashboard.
+Tool Node.js kiểm tra thứ hạng ứng dụng theo từ khóa trên **Google Play** và **Apple App Store**, theo từng quốc gia. Danh sách app lấy từ CMS, kết quả lưu vào MySQL/MariaDB/TiDB, có dashboard, REST API và lịch chạy tự động hằng ngày.
 
-## Giải pháp và cách hiểu “ranking”
+## Cách lấy thứ hạng
 
-- **Google Play:** browser mở trang tìm kiếm theo quốc gia/ngôn ngữ đã chọn và chỉ ghi hạng khi IP đầu ra được xác minh đúng quốc gia. Hạng là vị trí 1-based của package ID trong thứ tự DOM đọc được.
-- **Apple App Store – tìm kiếm từ khóa:** mặc định dùng `app-store-scraper`, vì `fitomad/App-Store-Ranking` không tìm kiếm theo từ khóa.
-- **Apple App Store – hạng danh mục (tùy chọn):** có thể bật adapter cho `fitomad/App-Store-Ranking`. Script upstream chỉ trả hạng chart theo danh mục (top-free/top-paid/top-grossing); adapter này ghi nhận **top-free**. Đây là chỉ số khác với hạng tìm kiếm theo từ khóa.
-- **Lưu trữ/API:** MySQL/MariaDB, có lịch sử theo ứng dụng, Store, quốc gia, từ khóa và thời điểm. Dashboard hiển thị hạng tìm thấy hoặc trạng thái không tìm thấy/lỗi.
-
-Đây là các scraper không chính thức, không phải API chính thức của Apple/Google. Kết quả có thể đổi theo thời gian, ngôn ngữ, IP, cá nhân hóa, giới hạn truy cập và thay đổi của Store. `RANKING_DEPTH` giới hạn tối đa 200 kết quả; nếu app không có trong danh sách đã đọc thì `not_found` **không** chứng minh app không có hạng sau phạm vi đó. `result_depth` là số kết quả thực tế đã nhận được, không phải số lượng được yêu cầu.
-
-### Ưu/nhược điểm lựa chọn
-
-| Lựa chọn | Ưu điểm | Hạn chế |
+| Store | Nguồn | Ghi chú |
 |---|---|---|
-| Scraper thư viện (`app-store-scraper`) | Không cần API key trả phí; tích hợp trực tiếp với lịch chạy và lưu DB | Không phải API chính thức; có thể bị chặn/giới hạn; dữ liệu, thứ tự và độ sâu phụ thuộc phản hồi Store |
-| `fitomad/App-Store-Ranking` | Lấy chart App Store theo quốc gia/danh mục; mã nguồn Python mở | Chỉ là hạng chart, không tìm theo từ khóa; upstream quét danh sách quốc gia và ba chart, có thể chạy lâu; cần Python và checkout riêng |
-| Crawl giao diện | Có thể quan sát giao diện tìm kiếm công khai | DOM thay đổi, khó ổn định và có thể bị CAPTCHA; không đảm bảo giống kết quả từng người dùng |
+| App Store | `app-store-scraper` (API tìm kiếm công khai của Apple) | Tối đa 200 kết quả, không cần trình duyệt |
+| Google Play | `google-play-scraper` (mặc định, `RANKING_GOOGLE_PLAY_SOURCE=scraper`) | Chỉ trả khoảng 30 kết quả, không xác minh được IP |
+| Google Play | Trình duyệt Playwright (`RANKING_GOOGLE_PLAY_SOURCE=browser`) | Đọc trang tìm kiếm thật, xác minh IP đúng quốc gia, có thể chạy qua proxy |
 
-Google Play chỉ được truy vấn qua browser (`RANKING_GOOGLE_PLAY_SOURCE=browser`) để xác minh IP đầu ra. `gl`/`hl` chọn storefront/ngôn ngữ nhưng không định tuyến IP; tool dừng và không ghi hạng nếu IP không thuộc quốc gia đang chọn hoặc không xác minh được. Nguồn `google-play-scraper` không xác minh được IP nên không được dùng cho ranking này. Để kiểm tra USA từ máy có IP Việt Nam, cần route VPN/proxy thực sự thoát ra ở USA; chỉ thay `gl=us` không đủ. Kết quả web vẫn có thể khác Play Store trên điện thoại do tài khoản, cá nhân hóa và khác biệt giao diện.
+Hạng là vị trí 1-based của app trong danh sách kết quả. `not_found` nghĩa là app không nằm trong số kết quả đã đọc (`result_depth`), không chứng minh app không có hạng. Đây là các scraper không chính thức, kết quả có thể dao động theo thời điểm, IP và thay đổi của Store.
 
-## Cài đặt và chạy bằng Docker
-
-Ứng dụng chạy trực tiếp trong container từ lệnh `node src/server.js`; không cần chạy `npm start` trên máy host. Cần có Docker Compose và một MySQL/MariaDB hoặc TiDB có thể truy cập từ container.
-
-1. Tạo `.env` từ `.env.example` và điền thông tin DB. Khi chạy Docker trên máy cá nhân, nếu DB nằm trên máy host, đặt `DB_HOST=host.docker.internal`; khi deploy Coolify, dùng hostname DB mà container có thể truy cập.
-2. Khởi tạo schema một lần:
-
-   ```sh
-   docker compose -f compose.yaml -f compose.local.yaml run --rm app node src/scripts/init-db.js
-   ```
-
-3. Chạy ứng dụng:
-
-   ```sh
-   docker compose -f compose.yaml -f compose.local.yaml up -d --build
-   ```
-
-   Mở `http://localhost:3000`. Xem log bằng `docker compose -f compose.yaml -f compose.local.yaml logs -f app`.
-
-4. Đồng bộ app từ CMS hoặc chạy ranking thủ công khi cần:
-
-   ```sh
-   docker compose -f compose.yaml -f compose.local.yaml exec app node src/scripts/sync-apps.js
-   docker compose -f compose.yaml -f compose.local.yaml exec app node src/scripts/run-rankings.js
-   ```
-
-Lịch ranking mặc định chạy lúc **08:00 mỗi ngày theo `TIMEZONE`** khi container hoạt động. Chỉ chạy một instance có scheduler để tránh chạy trùng.
-
-## Cấu hình quốc gia
-
-Dashboard lấy danh sách quốc gia đang bật từ `GET /api/config/countries`. Thêm hoặc cập nhật quốc gia bằng API; `country_code` là ISO alpha-2, `apple_storefront` là mã storefront App Store, `google_location_code` được lưu cấu hình quốc gia:
-
-```powershell
-curl.exe -X POST http://localhost:3000/api/config/countries `
-  -H "Content-Type: application/json" `
-  -d '{"country_code":"DE","country_name":"Germany","google_location_code":2276,"apple_storefront":"de","language_code":"de","enabled":true}'
-```
-
-Tắt một quốc gia bằng cách gửi lại cùng cấu hình với `"enabled": false`. Các quốc gia đã cấu hình được kiểm tra bởi cả endpoint tìm kiếm thử và batch ranking. `COUNTRIES` đặt các mã mặc định cho lịch chạy; chỉnh biến này nếu muốn lịch chạy thêm quốc gia.
-
-## Tích hợp `fitomad/App-Store-Ranking` (tùy chọn)
-
-Upstream hiện đặt script tại `src/ios-ranking.py`. Clone repo và cài Python 3:
-
-```powershell
-git clone https://github.com/fitomad/App-Store-Ranking.git tools/App-Store-Ranking
-python tools/App-Store-Ranking/src/ios-ranking.py --help
-```
-
-Chọn category ID từ danh sách upstream, sau đó cấu hình:
-
-```env
-APPLE_RANKING_MODE=category
-FITOMAD_IOSR_PATH=tools/App-Store-Ranking/src/ios-ranking.py
-APPLE_RANKING_CATEGORY=6007
-PYTHON_COMMAND=python
-```
-
-`6007` chỉ là ví dụ category ID, hãy chọn đúng danh mục cho ứng dụng. Adapter gọi upstream với `-stores world` rồi lấy dòng quốc gia cần xem; cột được lưu là **top-free**. Nếu app không xuất hiện trong chart, kết quả không phải là hạng tìm kiếm từ khóa. Trở về chế độ mặc định bằng `APPLE_RANKING_MODE=keyword`.
-
-## REST API
-
-Các endpoint chính:
-
-| Method | Endpoint | Mô tả |
-|---|---|---|
-| `GET` | `/health` | Kiểm tra API và kết nối DB |
-| `GET` | `/api/apps` | Danh sách app đã đồng bộ |
-| `PUT` | `/api/apps/:id/keywords` | Cấu hình từ khóa tìm kiếm bổ sung theo app |
-| `POST` | `/api/apps/sync` | Đồng bộ app từ CMS |
-| `GET` | `/api/config/countries` | Danh sách quốc gia và trạng thái |
-| `POST` | `/api/config/countries` | Thêm/cập nhật cấu hình quốc gia |
-| `POST` | `/api/rankings/run` | Chạy và lưu ranking cho app đã chọn |
-| `GET` | `/api/rankings` | Đọc kết quả mới nhất/lịch sử |
-| `GET` | `/api/rankings/history?app_id=1` | Lịch sử theo app |
-| `GET` | `/api/runs` | Lịch sử các lượt chạy |
-| `POST` | `/api/v1/rank-check` | API tích hợp: tên app + quốc gia + map keywords → thứ hạng |
-| `GET` | `/api/v1/rank-check/:runId` | Đọc kết quả/trạng thái lượt chạy API |
-
-Các tool khác có thể gọi API qua domain Coolify (hoặc `http://localhost:3000` khi chạy local). Ví dụ chạy app ID nội bộ `1` tại US và Canada trên cả hai Store:
-
-```powershell
-curl.exe -X POST https://your-ranking-domain.example/api/rankings/run `
-  -H "Content-Type: application/json" `
-  -d '{"app_ids":[1],"countries":["US","CA"],"platforms":["google_play","app_store"]}'
-```
-
-Đặt các từ khóa tìm kiếm bổ sung riêng cho app; mỗi phần tử là một cụm từ riêng:
+## Chạy trên máy
 
 ```sh
-curl -X PUT https://your-ranking-domain.example/api/apps/1/keywords \
-  -H "Content-Type: application/json" \
-  -d '{"keywords":["aws csa","saa-c03"]}'
+npm install
+cp .env.example .env      # rồi điền thông tin DB
+npm run db:init           # tạo schema, chạy một lần
+npm start                 # http://localhost:3000
 ```
 
-Mỗi ứng dụng có thể cấu hình nhiều từ khóa (khuyến nghị 2–3 từ khóa cơ bản). Khi chạy Ranking, hệ thống tự động kiểm tra **tất cả từ khóa đã cấu hình** cho từng nền tảng và quốc gia; mỗi từ khóa được lưu thành một kết quả riêng. Tên viết tắt ngắn như CEH được giữ nguyên, không tự mở rộng thành cụm dài. Nếu chưa có cấu hình riêng, hệ thống tạo danh sách mặc định từ tên ứng dụng và các biến thể nhận diện phù hợp. Lưu một danh sách riêng bằng `PUT /api/apps/:id/keywords` sẽ thay danh sách CMS/gợi ý mặc định cho app đó; gửi `{"keywords":[]}` để xóa danh sách riêng và quay về từ khóa CMS/gợi ý hợp lệ. Đồng bộ app từ CMS không ghi đè cấu hình riêng.
+Đồng bộ app từ CMS (cần chạy ít nhất một lần): `curl -X POST http://localhost:3000/api/apps/sync`
 
-Đọc kết quả mới nhất trong ngày cho các app/quốc gia đã chọn:
+Chế độ trình duyệt cần cài thêm: `npm run browser:install`.
 
-```text
-GET /api/rankings?app_ids=1&countries=US,CA&platforms=google_play,app_store&latest=1&today=1
+## Biến môi trường
+
+| Biến | Mặc định | Ý nghĩa |
+|---|---|---|
+| `PORT` | `3000` | Cổng server |
+| `TIMEZONE` | `Asia/Ho_Chi_Minh` | Múi giờ cho lịch chạy và `today=1` |
+| `CRON_SCHEDULE` | `0 8 * * *` | Lịch chạy ranking tự động (cron, tính theo `TIMEZONE`) |
+| `COUNTRIES` | `VN,US,CA,AU,GB,IN` | Quốc gia chạy theo lịch tự động |
+| `API_TOKEN` | trống | Token bảo vệ `/api/v1`. Để trống là không cần token |
+| `API_MAX_CHECKS` | `200` | Số lượt kiểm tra tối đa mỗi yêu cầu `/api/v1` |
+| `CMS_APPS_URL` | CMS ABC | Nguồn danh sách app |
+| `RANKING_DEPTH` | `200` | Số kết quả tối đa đọc cho mỗi lượt (1–200) |
+| `ENABLE_GOOGLE_PLAY`, `ENABLE_APP_STORE` | `true` | Bật/tắt từng Store |
+| `RANKING_GOOGLE_PLAY_SOURCE` | `scraper` | `scraper` hoặc `browser` |
+| `RANKING_BROWSER`, `RANKING_BROWSER_HEADLESS`, `RANKING_PROXY_MODE` | `chrome`, `false`, `off` | Chỉ dùng khi `RANKING_GOOGLE_PLAY_SOURCE=browser` |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSL` | xem `.env.example` | Kết nối DB (TiDB Cloud cần `DB_SSL=true`) |
+
+Không commit file `.env`.
+
+## Lịch chạy tự động
+
+Khi server chạy, lịch trong `CRON_SCHEDULE` sẽ đồng bộ app từ CMS rồi chạy ranking cho **tất cả app đang bật**, mọi từ khóa đã cấu hình, ở các quốc gia trong `COUNTRIES`, trên cả hai Store. Ví dụ chạy 6:00 sáng giờ Việt Nam:
+
+```env
+CRON_SCHEDULE=0 6 * * *
+TIMEZONE=Asia/Ho_Chi_Minh
+COUNTRIES=VN,US
 ```
 
-`/api/rankings` yêu cầu `app_id`, `app_ids` hoặc `run_id`; có thể lọc thêm bằng `platform` hoặc `platforms`, `country` hoặc `countries`, `keyword`, `status`, `from`, `to`, `latest`, `today` và `limit` (tối đa 1000). `today=1` chỉ lấy dữ liệu từ đầu ngày hiện tại theo `TIMEZONE`; phản hồi kèm `daily_reset_at` để client biết thời điểm kết quả hết hạn và tải lại. `latest=1` lấy bản ghi gần nhất theo app/Store/quốc gia/từ khóa. Trường `rank_position` là thứ hạng; `status` gồm `found`, `not_found`, `provider_error`, `provider_not_configured` hoặc `invalid_app_id`. Trạng thái `not_found` có nghĩa app không nằm trong số kết quả thực tế đã đọc, không phải hạng 0.
+Chỉ chạy một instance có server để tránh chạy trùng. Có thể chạy tay bằng `npm run sync:apps` và `npm run run:rankings`.
+
+## Deploy (Docker / Coolify)
+
+- Dùng `Dockerfile` và `compose.yaml` (chạy trực tiếp `node src/server.js`, không qua `npm start`).
+- Đặt các biến môi trường ở mục trên trong Coolify, đặc biệt `DB_*`, `API_TOKEN`, `CRON_SCHEDULE`, `TIMEZONE`, `COUNTRIES`.
+- `DB_HOST` phải là địa chỉ DB mà container truy cập được.
+- Cấu hình domain cho service `app` với cổng `3000`.
+- Lần đầu cần tạo schema: mở terminal của container và chạy `node src/scripts/init-db.js`.
 
 ## API tích hợp cho tool khác (`/api/v1`)
 
-Tool khác chỉ cần gửi **tên app + quốc gia + map app → keywords** để nhận thứ hạng, không cần biết ID nội bộ.
+Gửi **tên app + quốc gia + map app → keywords**, nhận thứ hạng.
 
 ### `POST /api/v1/rank-check`
 
@@ -137,7 +75,7 @@ Tool khác chỉ cần gửi **tên app + quốc gia + map app → keywords** đ
   "apps": ["asvab", "cdl"],
   "countries": ["us", "vn"],
   "keywords": {
-    "asvab": ["asvab practice test", "asvab study guide"],
+    "asvab": ["asvab practice test"],
     "cdl": ["cdl practice test"]
   },
   "platforms": ["google_play", "app_store"],
@@ -147,150 +85,118 @@ Tool khác chỉ cần gửi **tên app + quốc gia + map app → keywords** đ
 
 | Trường | Bắt buộc | Mô tả |
 |---|---|---|
-| `apps` hoặc `app` | Có* | Tên/key app, ví dụ `asvab`, `cdl`. Khớp theo `ma_cms` (key CMS) → tên đầy đủ → tên chứa cụm đó, không phân biệt hoa thường. Nếu khớp nhiều app trả `409 ambiguous_app` kèm danh sách `candidates`. |
+| `apps` hoặc `app` | Có* | Tên hoặc key app. Khớp theo key CMS, rồi tên đầy đủ, rồi tên chứa cụm đó (không phân biệt hoa thường). Khớp nhiều app thì trả `409 ambiguous_app` kèm `candidates`. |
 | `countries` hoặc `country` | Có | Mã ISO-2 (`us`, `vn`), phải là quốc gia đã bật trong `/api/config/countries`. |
-| `keywords` (hoặc `keys`) | Không | Map `app → [keywords]`. App có trong map dùng đúng các keyword này cho lượt chạy hiện tại (**không ghi đè** cấu hình từ khóa đã lưu). App không có trong map dùng từ khóa đã cấu hình. Tối đa 50 keyword/app. |
+| `keywords` (hoặc `keys`) | Không | Map `app → [keywords]`. Dùng cho riêng lượt chạy này, không ghi đè từ khóa đã lưu. App không có trong map dùng từ khóa đã cấu hình. Tối đa 50 keyword mỗi app. |
 | `platforms` | Không | Mặc định cả `google_play` và `app_store`. |
-| `async` | Không | `true`: trả `202` ngay kèm `run_id`, kiểm tra xong sẽ đọc bằng GET. Mặc định `false`: chờ chạy xong rồi trả kết quả. |
+| `async` | Không | `true`: trả `202` ngay kèm `run_id`, đọc kết quả bằng GET. Mặc định `false`: chờ chạy xong rồi trả kết quả. |
 
-\* Có thể bỏ `apps` nếu đã có `keywords` (lấy danh sách app từ key của map), hoặc gộp thành `"apps": {"asvab": [...], "cdl": [...]}`.
+\* Có thể bỏ `apps` nếu đã có `keywords`, hoặc gộp thành `"apps": {"asvab": [...], "cdl": [...]}`.
 
-Mỗi lượt kiểm tra là một tổ hợp app × keyword × store × quốc gia, mất vài giây tới vài chục giây vì dùng browser và có throttle. Với yêu cầu lớn nên dùng `async: true` để tránh timeout HTTP. Số lượt tối đa mỗi yêu cầu là `API_MAX_CHECKS` (mặc định 200). Các yêu cầu API được xếp hàng chạy tuần tự.
+Yêu cầu nhỏ (vài chục giây) nên chạy đồng bộ. Yêu cầu lớn nên dùng `async: true` để tránh timeout HTTP. Các yêu cầu được xếp hàng chạy tuần tự.
 
 Phản hồi:
 
 ```json
 {
   "ok": true,
-  "matched_apps": [{ "app_id": 1, "key": "asvab", "name": "ASVAB Practice Test" }],
+  "matched_apps": [{ "app_id": 65, "key": "asvab", "name": "ASVAB" }],
   "run_id": 12,
   "status": "completed",
-  "checks_done": 4,
-  "apps": [{
-    "app_id": 1, "key": "asvab", "name": "ASVAB Practice Test",
-    "results": [{
-      "platform": "google_play", "country": "US", "keyword": "asvab practice test",
-      "rank": 2, "status": "found", "result_depth": 200,
-      "store_url": "https://play.google.com/store/apps/details?id=...",
-      "error_message": null, "checked_at": "2026-11-05T07:26:16.931Z"
-    }]
-  }]
+  "started_at": "2026-11-05T15:30:04+07:00",
+  "finished_at": "2026-11-05T15:30:07+07:00",
+  "checks_done": 2,
+  "checks_total": 2,
+  "apps": [
+    {
+      "app_id": 65,
+      "key": "asvab",
+      "name": "ASVAB",
+      "results": [
+        {
+          "platform": "google_play",
+          "country": "US",
+          "keyword": "asvab practice test",
+          "rank": 18,
+          "status": "found",
+          "result_depth": 30,
+          "store_url": "https://play.google.com/store/apps/details?id=...",
+          "error_message": null,
+          "checked_at": "2026-11-05T15:30:04+07:00"
+        }
+      ]
+    }
+  ]
 }
 ```
 
-`rank` là vị trí 1-based; `null` khi `status` là `not_found`, `provider_error`, `provider_not_configured` hoặc `invalid_app_id` (ý nghĩa như ở `/api/rankings`). `status` của lượt chạy: `running`, `completed`, `partial` (có lỗi ở một số lượt), `failed`. Kết quả cũng được lưu vào lịch sử như các lượt chạy khác.
+- `rank`: vị trí 1-based, `null` khi `status` không phải `found`.
+- `status` của kết quả: `found`, `not_found`, `provider_error`, `provider_not_configured`, `invalid_app_id`.
+- `status` của lượt chạy: `running`, `completed`, `partial` (có lỗi ở một số lượt), `failed`.
+- Thời gian trả theo `TIMEZONE` (ISO 8601 kèm múi giờ).
+- Thứ tự phần tử trong `results` không cố định; đọc theo `platform`, `country`, `keyword`.
 
 ### `GET /api/v1/rank-check/:runId`
 
-Đọc trạng thái và kết quả hiện có của một lượt chạy (dùng sau `async: true`); cùng định dạng phản hồi như trên. Khi `status` là `running`, `apps` chứa các lượt đã xong; lặp lại tới khi `status` khác `running`.
+Đọc trạng thái và kết quả của một lượt chạy (dùng sau `async: true`). Khi `status` là `running`, `apps` chứa các lượt đã xong; gọi lại tới khi `status` khác `running`.
 
 ### Xác thực và lỗi
 
-Đặt `API_TOKEN` trong `.env` để bắt buộc `Authorization: Bearer <token>` (hoặc header `X-API-Key`) cho `/api/v1`. Nếu để trống, API mở không xác thực như các endpoint cũ (log cảnh báo). Lỗi trả JSON `{ "ok": false, "error": "<mã>", "message": "..." }` với các mã: `unauthorized` (401), `invalid_*`/`country_not_configured`/`too_many_checks` (400), `app_not_found`/`run_not_found` (404), `ambiguous_app`/`no_apps` (409).
+Nếu đặt `API_TOKEN`, mọi yêu cầu `/api/v1` phải gửi `Authorization: Bearer <token>` (hoặc header `X-API-Key`). Lỗi trả JSON `{ "ok": false, "error": "<mã>", "message": "..." }`:
+
+| HTTP | Mã lỗi |
+|---|---|
+| 401 | `unauthorized` |
+| 400 | `invalid_apps`, `invalid_countries`, `invalid_platforms`, `invalid_keywords`, `country_not_configured`, `too_many_checks`, `invalid_run_id` |
+| 404 | `app_not_found`, `run_not_found` |
+| 409 | `ambiguous_app`, `no_apps` |
 
 Ví dụ:
 
 ```sh
-curl -X POST https://your-ranking-domain.example/api/v1/rank-check \
+curl -X POST https://your-domain/api/v1/rank-check \
   -H "Authorization: Bearer YOUR_API_TOKEN" -H "Content-Type: application/json" \
-  -d '{"apps":["asvab","cdl"],"countries":["us","vn"],"keywords":{"asvab":["asvab practice test"],"cdl":["cdl practice test"]},"async":true}'
-
-curl -H "Authorization: Bearer YOUR_API_TOKEN" https://your-ranking-domain.example/api/v1/rank-check/12
+  -d '{"apps":["asvab"],"countries":["us"],"keywords":{"asvab":["asvab practice test"]}}'
 ```
 
-Lưu ý: lịch chạy hằng ngày (cron) và API dùng chung một browser nhưng không khóa lẫn nhau; tránh gọi API đúng giờ cron nếu dùng IP/proxy một lượt.
+## Các endpoint khác (dashboard dùng)
 
-Các endpoint REST khác (ngoài `/api/v1`) hiện không yêu cầu xác thực. Chỉ cho phép tool tin cậy truy cập; trước khi public domain, hãy đặt lớp xác thực/kiểm soát truy cập ở reverse proxy hoặc mạng triển khai.
+Các endpoint này **không yêu cầu token**. Khi deploy public, hãy bảo vệ ở reverse proxy hoặc lớp mạng.
 
-## Vận hành và giới hạn
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| `GET` | `/health` | Kiểm tra API và DB |
+| `GET` | `/api/apps` | Danh sách app đã đồng bộ |
+| `PUT` | `/api/apps/:id/keywords` | Đặt từ khóa riêng cho app (`{"keywords":[...]}`; `[]` để xóa) |
+| `POST` | `/api/apps/sync` | Đồng bộ app từ CMS |
+| `GET` | `/api/config/countries` | Danh sách quốc gia |
+| `POST` | `/api/config/countries` | Thêm/cập nhật quốc gia |
+| `POST` | `/api/rankings/run` | Chạy và lưu ranking cho app đã chọn |
+| `GET` | `/api/rankings` | Kết quả mới nhất/lịch sử |
+| `GET` | `/api/rankings/history?app_id=1` | Lịch sử theo app |
+| `GET` | `/api/runs` | Lịch sử các lượt chạy |
 
-- Nếu CMS không trả ID Store cho app, lượt kiểm tra ghi `invalid_app_id`; không dò theo tên để tránh ghép nhầm ứng dụng trùng tên.
-- `provider_error` là lỗi truy vấn/giới hạn từ Store hoặc scraper, không đồng nghĩa app không có thứ hạng.
-- Chỉ mở server ra mạng sau khi cấu hình xác thực và bảo vệ API phù hợp. Mặc định project hướng tới chạy nội bộ; không expose trực tiếp API không xác thực lên Internet.
-- Không commit `.env` hoặc chia sẻ thông tin kết nối DB.
-# app-store-ranking-tool
+`GET /api/rankings` cần `app_id`, `app_ids` hoặc `run_id`; lọc thêm bằng `platforms`, `countries`, `keyword`, `status`, `from`, `to`, `latest=1`, `today=1`, `limit` (tối đa 1000). Ví dụ:
 
-## Deploy bằng Docker Compose trên Coolify
-
-1. Push mã nguồn và các thay đổi lên GitHub; **không push `.env`**.
-2. Trong Coolify, tạo resource từ Git repository, chọn branch cần deploy và kiểu **Docker Compose**. Chọn file `compose.yaml` — không chọn `compose.local.yaml`.
-3. Thêm biến môi trường trong Coolify theo `.env.example`, đặc biệt `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` và `DB_SSL`. `DB_HOST` phải là địa chỉ DB truy cập được từ container, không dùng `127.0.0.1` cho DB bên ngoài container.
-4. Cấu hình domain cho service `app` với container port `3000`, rồi deploy. Compose chỉ expose port nội bộ để Coolify proxy định tuyến và hỗ trợ rolling update.
-5. Nếu schema chưa được khởi tạo, mở terminal của container trong Coolify và chạy:
-
-   ```sh
-   node src/scripts/init-db.js
-   ```
-
-Docker image chứa ứng dụng, Node dependencies và Chromium chạy headless. Entrypoint chạy Node trực tiếp, không gọi `npm start`. Không chạy `npm run db:seed` trên database đang dùng: script seed xóa các bảng trước khi import.
-
-## Chạy bằng Docker (Windows)
-
-### 1. Chuẩn bị
-
-- Cài Docker Desktop và bật chế độ Linux containers.
-- Mở PowerShell tại thư mục dự án.
-- Tạo file cấu hình nếu chưa có:
-
-```powershell
-Copy-Item .env.example .env
+```text
+GET /api/rankings?app_ids=65&countries=US,VN&platforms=google_play,app_store&latest=1&today=1
 ```
 
-Mở `.env` và cấu hình tối thiểu:
-- `API_TOKEN`: đặt một token riêng.
-- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`: thông tin MySQL hoặc TiDB Cloud.
-- Với TiDB Cloud, bật `DB_SSL=true` và điền thông tin kết nối cluster.
+Thêm quốc gia mới:
 
-**Lưu ý:** Nếu MySQL chạy trực tiếp trên Windows (ví dụ XAMPP), đặt `DB_HOST=host.docker.internal`, không dùng `127.0.0.1`. Nếu dùng TiDB Cloud, `DB_HOST` là hostname cluster.
-
-### 2. Build và khởi tạo database
-
-```powershell
-docker compose -f compose.yaml -f compose.local.yaml build
-docker compose -f compose.yaml -f compose.local.yaml run --rm app node src/scripts/init-db.js
+```sh
+curl -X POST http://localhost:3000/api/config/countries -H "Content-Type: application/json" \
+  -d '{"country_code":"DE","country_name":"Germany","google_location_code":2276,"apple_storefront":"de","language_code":"de","enabled":true}'
 ```
 
-Lệnh trên khởi tạo schema trên database đã cấu hình; không tự chuyển dữ liệu cũ.
+## Từ khóa của từng app
 
-### 3. Chạy ứng dụng
+- Mỗi app có thể có danh sách từ khóa riêng (khuyến nghị 2–3 từ khóa), quản lý trên dashboard hoặc bằng `PUT /api/apps/:id/keywords`.
+- Khi đã lưu danh sách riêng, đó là danh sách duy nhất được dùng. Chưa lưu thì dùng từ khóa gợi ý từ CMS/tên app.
+- Đồng bộ CMS không ghi đè từ khóa đã lưu.
+- Nếu CMS không có ID Store cho app, lượt kiểm tra ghi `invalid_app_id` (không dò theo tên để tránh nhầm app trùng tên).
+- `provider_error` là lỗi truy vấn/giới hạn từ Store, không có nghĩa app không có hạng.
 
-```powershell
-docker compose -f compose.yaml -f compose.local.yaml up -d
-docker compose -f compose.yaml -f compose.local.yaml logs -f app
-```
+## Định dạng code
 
-Mở giao diện tại http://localhost:3000. API được bảo vệ bằng Bearer token. Ví dụ:
-
-```powershell
-$headers = @{ Authorization = "Bearer YOUR_API_TOKEN" }
-Invoke-RestMethod -Uri "http://localhost:3000/health" -Headers $headers
-```
-
-### 4. Đồng bộ ứng dụng và chạy ranking
-
-```powershell
-docker compose -f compose.yaml -f compose.local.yaml exec app node src/scripts/sync-apps.js
-docker compose -f compose.yaml -f compose.local.yaml exec app node src/scripts/run-rankings.js
-```
-
-Xem log: `docker compose -f compose.yaml -f compose.local.yaml logs -f app`
-Dừng: `docker compose -f compose.yaml -f compose.local.yaml down`
-
-### Ghi chú về trình duyệt trong Docker
-
-Docker chạy Chromium ở chế độ headless bên trong container để thu thập dữ liệu; nó không mở cửa sổ trình duyệt trên desktop.
-
-Compose này kết nối tới database được khai báo trong `.env` (ví dụ TiDB Cloud); không tạo thêm MySQL container và không chứa thông tin đăng nhập database.
-
-
-## Quản lý từ khóa trên giao diện
-
-- Mở mục **Quản lý từ khóa tìm kiếm theo ứng dụng** trên trang web.
-- Tìm ứng dụng cần cấu hình, mở thẻ ứng dụng để xem danh sách từ khóa.
-- Chọn **+ Thêm từ khóa** để thêm, sửa trực tiếp nội dung trong ô, hoặc chọn **Xóa** để bỏ từ khóa.
-- Chọn **Lưu cấu hình** để lưu danh sách riêng cho ứng dụng. Danh sách đã lưu là danh sách duy nhất được dùng khi chạy Ranking; không tự động ghép thêm từ khóa gợi ý/CMS sau khi đã lưu.
-- Mỗi ứng dụng có danh sách từ khóa riêng trên giao diện; khuyến nghị cấu hình 2–3 từ khóa cơ bản.
-- Khi chạy thủ công hoặc tự động theo lịch, hệ thống kiểm tra tất cả từ khóa đã cấu hình của từng ứng dụng theo từng quốc gia và nền tảng.
-- Bảng kết quả hiển thị STT, từ khóa thực tế đã tìm, hạng và thời gian kiểm tra cho từng Store.
-
-Cấu hình được lưu trong cột `tu_khoa_tuy_chinh` của bảng `ung_dung`. Với database đã tạo trước đó, ứng dụng tự kiểm tra và thêm cột này khi khởi động/chạy ranking nếu cột chưa tồn tại.
+Dùng Prettier với cấu hình trong `.prettierrc.json`: `npx prettier --write "src/**/*.js"`.

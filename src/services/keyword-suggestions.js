@@ -5,10 +5,19 @@ const KEYWORD_ALIASES = new Map([
   ['ap world history', ['AP World', 'AP World History exam']],
   ['asvab', ['ASVAB test', 'ASVAB practice test']],
   ['aswb', ['ASWB exam', 'ASWB practice test']],
-  ['australian citizenship', ['Australian citizenship test', 'Australian citizenship practice test']],
-  ['aws cerified sysops administrator (soa-c02)', ['AWS Certified SysOps Administrator', 'AWS SOA-C02', 'SOA-C02']],
+  [
+    'australian citizenship',
+    ['Australian citizenship test', 'Australian citizenship practice test']
+  ],
+  [
+    'aws cerified sysops administrator (soa-c02)',
+    ['AWS Certified SysOps Administrator', 'AWS SOA-C02', 'SOA-C02']
+  ],
   ['aws certified developer (dva-c02)', ['AWS Certified Developer', 'AWS DVA-C02', 'DVA-C02']],
-  ['aws certified solutions architect (saa - c03)', ['SAA-C03', 'AWS SAA', 'AWS CSA', 'AWS Certified Solutions Architect']],
+  [
+    'aws certified solutions architect (saa - c03)',
+    ['SAA-C03', 'AWS SAA', 'AWS CSA', 'AWS Certified Solutions Architect']
+  ],
   ['aws cloud practitioner (clf - c02)', ['AWS Cloud Practitioner', 'AWS CLF-C02', 'CLF-C02']],
   ['azure fundamentals (az - 900)', ['AZ-900', 'Azure Fundamentals', 'Microsoft AZ-900']],
   ['canadian citizenship', ['Canadian citizenship test', 'Canada citizenship test']],
@@ -57,7 +66,10 @@ const KEYWORD_ALIASES = new Map([
   ['hspt', ['High School Placement Test', 'HSPT practice test']],
   ['hvac', ['HVAC certification exam', 'HVAC practice test']],
   ['java se 17 developer', ['Java 17 certification', 'Oracle Java SE 17 Developer exam']],
-  ['journeyman electrician test', ['Journeyman electrician exam', 'Electrician journeyman practice test']],
+  [
+    'journeyman electrician test',
+    ['Journeyman electrician exam', 'Electrician journeyman practice test']
+  ],
   ['mbe', ['Multistate Bar Examination', 'MBE practice questions']],
   ['mblex', ['Massage and Bodywork Licensing Examination', 'MBLEx practice test']],
   ['mcat', ['Medical College Admission Test', 'MCAT practice test']],
@@ -92,7 +104,10 @@ const KEYWORD_ALIASES = new Map([
   ['tsi', ['Texas Success Initiative Assessment', 'TSI practice test']],
   ['usmle', ['United States Medical Licensing Examination', 'USMLE practice questions']],
   ['vtne', ['Veterinary Technician National Examination', 'VTNE practice test']],
-  ['wastewater operator', ['Wastewater operator certification exam', 'Wastewater treatment operator test']],
+  [
+    'wastewater operator',
+    ['Wastewater operator certification exam', 'Wastewater treatment operator test']
+  ],
   ['wonderlic', ['Wonderlic test', 'Wonderlic practice test']],
   ['worksheetzone: ai quiz maker', ['Worksheetzone AI Quiz Maker', 'Worksheet Zone']]
 ]);
@@ -124,8 +139,11 @@ function suggestKeywords(appName) {
   if (shortAliases) return shortAliases;
   const aliases = KEYWORD_ALIASES.get(key) || [];
   // Với tên ngắn, chỉ nhận biến thể ngắn gọn; không mở rộng CEH thành tên chứng chỉ dài.
-  const filtered = aliases.filter(keyword =>
-    !/\b(practice|exam|test prep|test questions|written test|permit test|certification test)\b/i.test(keyword)
+  const filtered = aliases.filter(
+    keyword =>
+      !/\b(practice|exam|test prep|test questions|written test|permit test|certification test)\b/i.test(
+        keyword
+      )
   );
   if (key === 'ceh') return [];
   return [...new Set(filtered)].slice(0, 3);
@@ -136,10 +154,12 @@ function defaultKeywordsForApp(appName, cmsKeywords = [], storeNameKeywords = []
   const aliases = suggestKeywords(name);
   // Với tên ngắn, giữ nguyên tên/mã làm từ khóa chính (CEH vẫn chỉ là CEH).
   // Với tên dài, ưu tiên mã viết tắt và các biến thể dễ nhận diện.
-  const storeNames = name.toLowerCase() === 'ceh' ? [] : (Array.isArray(storeNameKeywords) ? storeNameKeywords : []);
-  const candidates = name.length <= 20
-    ? [name, ...aliases, ...storeNames]
-    : [...aliases, ...(Array.isArray(cmsKeywords) ? cmsKeywords : []), ...storeNames, name];
+  const storeNames =
+    name.toLowerCase() === 'ceh' ? [] : Array.isArray(storeNameKeywords) ? storeNameKeywords : [];
+  const candidates =
+    name.length <= 20
+      ? [name, ...aliases, ...storeNames]
+      : [...aliases, ...(Array.isArray(cmsKeywords) ? cmsKeywords : []), ...storeNames, name];
   const unique = [...new Set(candidates.map(value => String(value || '').trim()).filter(Boolean))];
   return unique.slice(0, 3);
 }

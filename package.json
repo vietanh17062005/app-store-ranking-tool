@@ -9,15 +9,13 @@
     "sync:apps": "node src/scripts/sync-apps.js",
     "run:rankings": "node src/scripts/run-rankings.js",
     "db:init": "node src/scripts/init-db.js",
-    "browser:install": "playwright install chromium",
-    "db:seed": "node src/scripts/seed-db.js"
+    "browser:install": "playwright install chromium"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "axios": "^1.8.4",
-    "basic-auth": "^2.0.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

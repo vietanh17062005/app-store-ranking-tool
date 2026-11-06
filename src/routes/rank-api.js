@@ -17,41 +17,63 @@ const MAX_KEYWORDS_PER_APP = 50;
 const MAX_CHECKS = Math.max(1, Number.parseInt(process.env.API_MAX_CHECKS || '200', 10) || 200);
 
 class ApiError extends Error {
-  constructor(status, code, message, extra = {}) { super(message); this.status = status; this.code = code; this.extra = extra; }
+  constructor(status, code, message, extra = {}) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.extra = extra;
+  }
 }
 
 // Các lượt chạy từ API được xếp hàng tuần tự vì dùng chung một browser/IP.
 let queueTail = Promise.resolve();
 function enqueue(task) {
   const result = queueTail.then(task, task);
-  queueTail = result.catch(() => { });
+  queueTail = result.catch(() => {});
   return result;
 }
 
 // DB lưu UTC (chuỗi "YYYY-MM-DD HH:mm:ss"); API trả ISO 8601 theo TIMEZONE của tool (mặc định GMT+7), vd "2026-11-05T14:36:23+07:00".
 const tzFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: config.timezone, hourCycle: 'h23',
-  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+  timeZone: config.timezone,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit'
 });
 function toLocalIso(value) {
   if (value == null) return null;
   const date = value instanceof Date ? value : new Date(String(value).replace(' ', 'T') + 'Z');
   if (Number.isNaN(date.getTime())) return value;
   const p = Object.fromEntries(tzFormatter.formatToParts(date).map(x => [x.type, x.value]));
-  const offsetMin = Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(date.getTime() / 1000) * 1000) / 60000);
+  const offsetMin = Math.round(
+    (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) -
+      Math.floor(date.getTime() / 1000) * 1000) /
+      60000
+  );
   const sign = offsetMin >= 0 ? '+' : '-';
   const abs = Math.abs(offsetMin);
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
 }
 
-const norm = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+const norm = value =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
 function asList(value) {
   if (value == null) return [];
-  return (Array.isArray(value) ? value : String(value).split(',')).map(x => String(x).trim()).filter(Boolean);
+  return (Array.isArray(value) ? value : String(value).split(','))
+    .map(x => String(x).trim())
+    .filter(Boolean);
 }
 
 async function loadActiveApps() {
-  const [rows] = await pool.query('SELECT id, ma_cms AS cms_key, ten AS app_name, id_google AS google_play_id, id_apple AS app_store_id FROM ung_dung WHERE kich_hoat=1');
+  const [rows] = await pool.query(
+    'SELECT id, ma_cms AS cms_key, ten AS app_name, id_google AS google_play_id, id_apple AS app_store_id FROM ung_dung WHERE kich_hoat=1'
+  );
   return rows;
 }
 // Tên app -> 1 app duy nhất. Thứ tự: ma_cms (vd "asvab") -> tên đầy đủ -> tên chứa cụm đó.
@@ -66,11 +88,23 @@ function resolveApp(name, apps) {
   for (const hits of tiers) {
     if (hits.length === 1) return hits[0];
     if (hits.length > 1) {
-      throw new ApiError(409, 'ambiguous_app', `Tên app "${name}" khớp nhiều app, hãy dùng key chính xác.`,
-        { candidates: hits.slice(0, 10).map(a => ({ app_id: a.id, key: a.cms_key, name: a.app_name })) });
+      throw new ApiError(
+        409,
+        'ambiguous_app',
+        `Tên app "${name}" khớp nhiều app, hãy dùng key chính xác.`,
+        {
+          candidates: hits
+            .slice(0, 10)
+            .map(a => ({ app_id: a.id, key: a.cms_key, name: a.app_name }))
+        }
+      );
     }
   }
-  throw new ApiError(404, 'app_not_found', `Không tìm thấy app "${name}" (đã thử khớp theo key và tên).`);
+  throw new ApiError(
+    404,
+    'app_not_found',
+    `Không tìm thấy app "${name}" (đã thử khớp theo key và tên).`
+  );
 }
 
 // Chuẩn hóa body -> { appNames, countries, keywordMap, platforms, async }
@@ -79,7 +113,11 @@ function parseBody(body = {}) {
   const rawKeywords = body.keywords ?? body.keys;
   if (rawKeywords != null) {
     if (typeof rawKeywords !== 'object' || Array.isArray(rawKeywords)) {
-      throw new ApiError(400, 'invalid_keywords', 'keywords phải là object dạng {"asvab":["từ khóa 1","từ khóa 2"],"cdl":[...]}.');
+      throw new ApiError(
+        400,
+        'invalid_keywords',
+        'keywords phải là object dạng {"asvab":["từ khóa 1","từ khóa 2"],"cdl":[...]}.'
+      );
     }
     keywordMap = rawKeywords;
   }
@@ -92,10 +130,13 @@ function parseBody(body = {}) {
     appNames = asList(body.apps ?? body.app);
   }
   if (!appNames.length) appNames = Object.keys(keywordMap);
-  if (!appNames.length) throw new ApiError(400, 'invalid_apps', 'Cần apps (vd ["asvab","cdl"]) hoặc keywords map.');
+  if (!appNames.length)
+    throw new ApiError(400, 'invalid_apps', 'Cần apps (vd ["asvab","cdl"]) hoặc keywords map.');
   const countries = [...new Set(asList(body.countries ?? body.country).map(c => c.toUpperCase()))];
-  if (!countries.length) throw new ApiError(400, 'invalid_countries', 'Cần countries (vd ["us","vn"]) hoặc country.');
-  if (countries.some(c => !/^[A-Z]{2}$/.test(c))) throw new ApiError(400, 'invalid_countries', 'Mã quốc gia phải là ISO alpha-2 (us, vn, ...).');
+  if (!countries.length)
+    throw new ApiError(400, 'invalid_countries', 'Cần countries (vd ["us","vn"]) hoặc country.');
+  if (countries.some(c => !/^[A-Z]{2}$/.test(c)))
+    throw new ApiError(400, 'invalid_countries', 'Mã quốc gia phải là ISO alpha-2 (us, vn, ...).');
   const platforms = body.platforms == null ? PLATFORMS : [...new Set(asList(body.platforms))];
   if (!platforms.length || platforms.some(p => !PLATFORMS.includes(p))) {
     throw new ApiError(400, 'invalid_platforms', 'platforms chỉ nhận google_play, app_store.');
@@ -105,27 +146,44 @@ function parseBody(body = {}) {
 }
 
 function normalizeKeywordList(list, appName) {
-  if (!Array.isArray(list)) throw new ApiError(400, 'invalid_keywords', `keywords của "${appName}" phải là mảng chuỗi.`);
+  if (!Array.isArray(list))
+    throw new ApiError(400, 'invalid_keywords', `keywords của "${appName}" phải là mảng chuỗi.`);
   if (list.some(k => typeof k !== 'string' || !k.trim() || k.trim().length > 500)) {
-    throw new ApiError(400, 'invalid_keywords', `Mỗi keyword của "${appName}" phải là chuỗi 1–500 ký tự.`);
+    throw new ApiError(
+      400,
+      'invalid_keywords',
+      `Mỗi keyword của "${appName}" phải là chuỗi 1–500 ký tự.`
+    );
   }
   const out = [...new Set(list.map(k => k.trim()))];
-  if (out.length > MAX_KEYWORDS_PER_APP) throw new ApiError(400, 'invalid_keywords', `Tối đa ${MAX_KEYWORDS_PER_APP} keywords mỗi app.`);
+  if (out.length > MAX_KEYWORDS_PER_APP)
+    throw new ApiError(400, 'invalid_keywords', `Tối đa ${MAX_KEYWORDS_PER_APP} keywords mỗi app.`);
   return out;
 }
 
 async function fetchRunResults(runId) {
-  const [[run]] = await pool.query('SELECT id, bat_dau AS started_at, ket_thuc AS finished_at, trang_thai AS status, so_ung_dung AS apps_count, so_lan_kiem AS checks_count, loi AS error_message FROM lan_chay WHERE id=?', [runId]);
+  const [[run]] = await pool.query(
+    'SELECT id, bat_dau AS started_at, ket_thuc AS finished_at, trang_thai AS status, so_ung_dung AS apps_count, so_lan_kiem AS checks_count, loi AS error_message FROM lan_chay WHERE id=?',
+    [runId]
+  );
   if (!run) return null;
   const [rows] = await pool.query(
     `SELECT r.ung_dung_id AS app_id, a.ma_cms AS app_key, a.ten AS app_name, r.nen_tang AS platform, r.ma_quoc_gia AS country,
             r.tu_khoa AS keyword, r.vi_tri AS \`rank\`, r.trang_thai AS status, r.do_sau AS result_depth,
             r.url_store AS store_url, r.loi AS error_message, r.kiem_tra_luc AS checked_at
      FROM thu_hang r JOIN ung_dung a ON a.id=r.ung_dung_id WHERE r.lan_id=?
-     ORDER BY a.ten, r.ma_quoc_gia, r.nen_tang, r.id`, [runId]);
+     ORDER BY a.ten, r.ma_quoc_gia, r.nen_tang, r.id`,
+    [runId]
+  );
   const byApp = new Map();
   for (const row of rows) {
-    if (!byApp.has(row.app_id)) byApp.set(row.app_id, { app_id: row.app_id, key: row.app_key, name: row.app_name, results: [] });
+    if (!byApp.has(row.app_id))
+      byApp.set(row.app_id, {
+        app_id: row.app_id,
+        key: row.app_key,
+        name: row.app_name,
+        results: []
+      });
     const { app_id, app_key, app_name, ...result } = row;
     byApp.get(row.app_id).results.push({ ...result, checked_at: toLocalIso(result.checked_at) });
   }
@@ -150,7 +208,12 @@ router.post('/rank-check', async (req, res, next) => {
   try {
     const { appNames, countries, keywordMap, platforms, asyncMode } = parseBody(req.body);
     const activeApps = await loadActiveApps();
-    if (!activeApps.length) throw new ApiError(409, 'no_apps', 'Chưa có app nào trong DB. Gọi POST /api/apps/sync trước.');
+    if (!activeApps.length)
+      throw new ApiError(
+        409,
+        'no_apps',
+        'Chưa có app nào trong DB. Gọi POST /api/apps/sync trước.'
+      );
 
     const resolved = new Map(); // app.id -> app
     const requestedBy = new Map(); // tên người dùng gửi -> app.id
@@ -162,8 +225,15 @@ router.post('/rank-check', async (req, res, next) => {
     // keywords map: key có thể là tên app khác cách viết; ép về cùng app đã resolve.
     const keywordsByApp = {};
     for (const [name, list] of Object.entries(keywordMap)) {
-      const app = requestedBy.has(norm(name)) ? resolved.get(requestedBy.get(norm(name))) : resolveApp(name, activeApps);
-      if (!resolved.has(app.id)) throw new ApiError(400, 'invalid_keywords', `keywords có app "${name}" nhưng app này không nằm trong apps.`);
+      const app = requestedBy.has(norm(name))
+        ? resolved.get(requestedBy.get(norm(name)))
+        : resolveApp(name, activeApps);
+      if (!resolved.has(app.id))
+        throw new ApiError(
+          400,
+          'invalid_keywords',
+          `keywords có app "${name}" nhưng app này không nằm trong apps.`
+        );
       const keywords = normalizeKeywordList(list, name);
       if (keywords.length) keywordsByApp[app.id] = keywords;
     }
@@ -171,52 +241,92 @@ router.post('/rank-check', async (req, res, next) => {
     const configured = await getCountries(countries);
     const known = new Set(configured.map(c => c.country_code));
     const unknown = countries.filter(c => !known.has(c));
-    if (unknown.length) throw new ApiError(400, 'country_not_configured', `Quốc gia chưa được cấu hình hoặc đang tắt: ${unknown.join(', ')}. Thêm bằng POST /api/config/countries.`);
+    if (unknown.length)
+      throw new ApiError(
+        400,
+        'country_not_configured',
+        `Quốc gia chưa được cấu hình hoặc đang tắt: ${unknown.join(', ')}. Thêm bằng POST /api/config/countries.`
+      );
 
     // Ước lượng số lượt kiểm tra (app không gửi keywords sẽ dùng từ khóa đã cấu hình, nên chỉ tính phần biết trước).
-    const knownKeywordCount = [...resolved.keys()].reduce((n, id) => n + (keywordsByApp[id]?.length || 0), 0);
+    const knownKeywordCount = [...resolved.keys()].reduce(
+      (n, id) => n + (keywordsByApp[id]?.length || 0),
+      0
+    );
     const estimated = knownKeywordCount * platforms.length * countries.length;
-    if (estimated > MAX_CHECKS) throw new ApiError(400, 'too_many_checks', `Yêu cầu có ${estimated} lượt kiểm tra, vượt giới hạn ${MAX_CHECKS} (API_MAX_CHECKS). Hãy chia nhỏ yêu cầu.`);
+    if (estimated > MAX_CHECKS)
+      throw new ApiError(
+        400,
+        'too_many_checks',
+        `Yêu cầu có ${estimated} lượt kiểm tra, vượt giới hạn ${MAX_CHECKS} (API_MAX_CHECKS). Hãy chia nhỏ yêu cầu.`
+      );
 
     await ensureCustomKeywordColumn();
     const options = {
-      triggerType: 'manual', countries, platforms, appIds: [...resolved.keys()], keywordsByApp,
+      triggerType: 'manual',
+      countries,
+      platforms,
+      appIds: [...resolved.keys()],
+      keywordsByApp,
       browser: String(process.env.RANKING_BROWSER || 'chrome').toLowerCase()
     };
-    const matched = [...resolved.values()].map(a => ({ app_id: a.id, key: a.cms_key, name: a.app_name }));
+    const matched = [...resolved.values()].map(a => ({
+      app_id: a.id,
+      key: a.cms_key,
+      name: a.app_name
+    }));
 
     let onCreated;
-    const created = new Promise(resolve => { onCreated = resolve; });
+    const created = new Promise(resolve => {
+      onCreated = resolve;
+    });
     const finished = enqueue(() => runRankings({ ...options, onRunCreated: onCreated }));
 
     if (asyncMode) {
       // Trả ngay khi lượt chạy được tạo (hoặc báo lỗi nếu thất bại trước đó).
-      finished.catch(error => { console.error('[api/v1] run failed:', error.message); });
+      finished.catch(error => {
+        console.error('[api/v1] run failed:', error.message);
+      });
       const runId = await Promise.race([created, finished.then(() => null)]);
       if (runId) {
-        return res.status(202).json({ ok: true, run_id: runId, status: 'running', matched_apps: matched, poll_url: `/api/v1/rank-check/${runId}` });
+        return res
+          .status(202)
+          .json({
+            ok: true,
+            run_id: runId,
+            status: 'running',
+            matched_apps: matched,
+            poll_url: `/api/v1/rank-check/${runId}`
+          });
       }
     }
     const summary = await finished;
     const data = await fetchRunResults(summary.runId);
     res.json({ ok: true, matched_apps: matched, ...runPayload(data) });
-  } catch (error) { next(error); }
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get('/rank-check/:runId', async (req, res, next) => {
   try {
     const runId = Number(req.params.runId);
-    if (!Number.isInteger(runId) || runId < 1) throw new ApiError(400, 'invalid_run_id', 'run_id phải là số nguyên dương.');
+    if (!Number.isInteger(runId) || runId < 1)
+      throw new ApiError(400, 'invalid_run_id', 'run_id phải là số nguyên dương.');
     const data = await fetchRunResults(runId);
     if (!data) throw new ApiError(404, 'run_not_found', 'Không tìm thấy lượt chạy.');
     res.json({ ok: true, ...runPayload(data) });
-  } catch (error) { next(error); }
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Trả lỗi dạng JSON thống nhất cho /api/v1.
 router.use((error, _req, res, next) => {
   if (!(error instanceof ApiError)) return next(error);
-  res.status(error.status).json({ ok: false, error: error.code, message: error.message, ...error.extra });
+  res
+    .status(error.status)
+    .json({ ok: false, error: error.code, message: error.message, ...error.extra });
 });
 
 module.exports = router;

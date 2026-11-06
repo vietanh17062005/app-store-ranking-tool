@@ -5,7 +5,7 @@ const { normalizeCmsPayload } = require('../utils/cms-normalizer');
 
 async function syncApps() {
   const response = await axios.get(config.cmsAppsUrl, {
-    timeout: config.dataForSeo.timeoutMs,
+    timeout: config.requestTimeoutMs,
     headers: { Accept: 'application/json' }
   });
   const apps = normalizeCmsPayload(response.data);
@@ -28,13 +28,30 @@ async function syncApps() {
         await connection.execute(
           `UPDATE ung_dung SET ma_cms=?, ten=?, id_google=?, id_apple=?,
            goi_apple=?, tu_khoa=?, du_lieu_cms=?, kich_hoat=1 WHERE id=?`,
-          [app.cmsKey, app.appName, app.googlePlayId, app.appStoreId, app.appStoreBundleId, keywords, JSON.stringify(app.raw), existing[0].id]
+          [
+            app.cmsKey,
+            app.appName,
+            app.googlePlayId,
+            app.appStoreId,
+            app.appStoreBundleId,
+            keywords,
+            JSON.stringify(app.raw),
+            existing[0].id
+          ]
         );
       } else {
         await connection.execute(
           `INSERT INTO ung_dung (ma_cms, ten, id_google, id_apple, goi_apple, tu_khoa, du_lieu_cms)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [app.cmsKey, app.appName, app.googlePlayId, app.appStoreId, app.appStoreBundleId, keywords, JSON.stringify(app.raw)]
+          [
+            app.cmsKey,
+            app.appName,
+            app.googlePlayId,
+            app.appStoreId,
+            app.appStoreBundleId,
+            keywords,
+            JSON.stringify(app.raw)
+          ]
         );
       }
       synced++;
